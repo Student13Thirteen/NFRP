@@ -1,0 +1,57 @@
+{
+  "name": "nfrp-portfolio-edition",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "prisma generate && next build",
+    "start": "next start",
+    "lint": "eslint .",
+    "test": "TZ=UTC vitest run",
+    "prisma:generate": "prisma generate",
+    "prisma:migrate": "prisma migrate dev",
+    "prisma:deploy": "prisma migrate deploy",
+    "prisma:seed": "tsx prisma/seed.ts",
+    "notifications:run": "tsx src/jobs/notifications.ts --once",
+    "notifications:worker": "tsx src/jobs/notifications.ts",
+    "document-mirror:worker": "NODE_OPTIONS='--conditions react-server' tsx src/jobs/document-mirror.ts",
+    "inbox:samples": "NODE_OPTIONS='--conditions react-server' tsx scripts/inbox-sample-report.ts",
+    "expenses:diagnose": "NODE_OPTIONS='--conditions react-server' tsx scripts/diagnose-expense-samples.ts"
+  },
+  "dependencies": {
+    "@prisma/client": "^5.22.0",
+    "@types/pdf-parse": "^1.1.4",
+    "bcryptjs": "^2.4.3",
+    "cron-parser": "^4.9.0",
+    "lucide-react": "^0.468.0",
+    "next": "^16.2.6",
+    "pdf-parse": "^1.1.1",
+    "pg": "^8.13.1",
+    "postcss": "^8.5.10",
+    "prisma": "^5.22.0",
+    "react": "^19.2.1",
+    "react-dom": "^19.2.1",
+    "server-only": "^0.0.1",
+    "tsx": "^4.19.2",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "@types/node": "^22.10.2",
+    "@types/pg": "^8.11.10",
+    "@types/react": "^19.2.7",
+    "@types/react-dom": "^19.2.3",
+    "eslint": "^9.39.4",
+    "eslint-config-next": "^16.2.6",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  },
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
+  },
+  "overrides": {
+    "next": {
+      "postcss": "8.5.10"
+    }
+  }
+}

@@ -1,0 +1,109 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    env_file:
+      - ${ENV_FILE:-.env}
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 8
+
+  app:
+    build: .
+    image: nfrp-portfolio-app
+    restart: unless-stopped
+    env_file:
+      - ${ENV_FILE:-.env}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: sh -c "npx prisma migrate deploy && npm run prisma:seed && npm run start"
+    ports:
+      - "${APP_BIND_ADDRESS:-127.0.0.1}:${APP_PORT:-3000}:3000"
+    volumes:
+      - uploads:/app/uploads
+      - backups:/backups
+      - ./branding:/bootstrap-branding:ro
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:3000/api/health').then((response) => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))\""]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+      start_period: 90s
+
+  ollama:
+    image: ollama/ollama:latest
+    profiles:
+      - assistant
+    restart: unless-stopped
+    volumes:
+      - ollama_data:/root/.ollama
+
+  notifications:
+    image: nfrp-portfolio-app
+    profiles:
+      - integrations
+    restart: unless-stopped
+    env_file:
+      - ${ENV_FILE:-.env}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: sh -c "npx prisma migrate deploy && npm run notifications:worker"
+    volumes:
+      - uploads:/app/uploads:ro
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    profiles:
+      - remote
+    restart: unless-stopped
+    env_file:
+      - ${ENV_FILE:-.env}
+    depends_on:
+      app:
+        condition: service_healthy
+    command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TOKEN}
+
+  document-mirror:
+    image: nfrp-portfolio-app
+    profiles:
+      - integrations
+    restart: unless-stopped
+    env_file:
+      - ${ENV_FILE:-.env}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: sh -c "npx prisma migrate deploy && npm run document-mirror:worker"
+    volumes:
+      - uploads:/app/uploads:ro
+
+  backup:
+    image: postgres:16-alpine
+    profiles:
+      - tools
+    env_file:
+      - ${ENV_FILE:-.env}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - uploads:/app/uploads:ro
+      - backups:/backups
+      - ./scripts:/scripts:ro
+    entrypoint: ["/bin/sh", "/scripts/backup.sh"]
+
+volumes:
+  postgres_data:
+  ollama_data:
+  uploads:
+  backups:

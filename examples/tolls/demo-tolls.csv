@@ -1,0 +1,3 @@
+Contatore Riga;Tipo Movimento;Data uscita;Ora Uscita;Descrizione Casello Ingresso;Descrizione Casello Uscita;Importo Esente Iva;Importo Lordo Soggetto Iva;Aliquota Iva;Tessera Supporto Principale;Targa Principale;Numero Fattura;Distanza;Valuta
+1;PD;15/07/2026;10:30:00;PORTO DEMO;INTERPORTO DEMO;10,00;12,20;22;DEMO-CARD-001;AB123CD;DEMO-2026-001;42;EUR
+2;PD;16/07/2026;14:45:00;INTERPORTO DEMO;MAGAZZINO DEMO;8,00;9,76;22;DEMO-CARD-001;AB123CD;DEMO-2026-001;31;EUR

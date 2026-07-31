@@ -1,0 +1,15 @@
+node_modules
+.next
+.git
+.env
+.env.local
+.env.*.local
+uploads
+backups
+coverage
+*.log
+Dockerfile
+docker-compose*.yml
+
+__pycache__
+*.py[cod]

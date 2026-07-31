@@ -1,0 +1,49 @@
+# Build e dipendenze
+.next/
+node_modules/
+coverage/
+*.tsbuildinfo
+
+# Variabili e credenziali
+.env
+.env.*
+!.env.example
+!.env.*.example
+.npmrc
+
+# Dati applicativi e backup
+uploads/
+backups/
+secrets/
+private/
+tmp/
+
+# Database, dump e archivi
+*.db
+*.sqlite
+*.sql
+!prisma/migrations/**/migration.sql
+*.dump
+*.bak
+*.tar
+*.tar.gz
+*.zip
+*.enc
+
+# Chiavi e certificati privati
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Python cache
+__pycache__/
+*.py[cod]
+
+# Log e sistema operativo
+*.log
+.DS_Store
+
+# Logo scelto durante il setup; il placeholder resta versionato
+branding/*
+!branding/.gitkeep

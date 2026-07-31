@@ -1,0 +1,379 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ENV_FILE="$ROOT_DIR/.env"
+BRANDING_DIR="$ROOT_DIR/branding"
+
+if [[ -t 1 ]]; then
+  BOLD='\033[1m'; BLUE='\033[34m'; GREEN='\033[32m'; YELLOW='\033[33m'; RED='\033[31m'; RESET='\033[0m'
+else
+  BOLD=''; BLUE=''; GREEN=''; YELLOW=''; RED=''; RESET=''
+fi
+
+info() { printf "%b%s%b\n" "$BLUE" "$*" "$RESET"; }
+ok() { printf "%b%s%b\n" "$GREEN" "$*" "$RESET"; }
+warn() { printf "%b%s%b\n" "$YELLOW" "$*" "$RESET"; }
+die() { printf "%b%s%b\n" "$RED" "$*" "$RESET" >&2; exit 1; }
+
+usage() {
+  cat <<'USAGE'
+NFRP
+
+Usage:
+  bash nfrp setup              guided first installation
+  bash nfrp start              start or reconcile the stack
+  bash nfrp stop               stop containers, preserve data
+  bash nfrp status             show containers and health
+  bash nfrp doctor             verify configuration and runtime
+  bash nfrp logs [service]     follow logs (app, postgres, cloudflared)
+  bash nfrp backup             database + uploads backup
+  bash nfrp update             backup, rebuild and restart
+  bash nfrp demo               print and verify the five-minute demo path
+  bash nfrp credentials        show local URL and initial administrator
+  bash nfrp help
+USAGE
+}
+
+need() { command -v "$1" >/dev/null 2>&1 || die "Missing required command: $1"; }
+
+require_docker() {
+  need docker
+  docker compose version >/dev/null 2>&1 || die "Docker Compose v2 is required."
+  docker info >/dev/null 2>&1 || die "Docker is installed but the daemon is not reachable."
+}
+
+random_secret() {
+  if command -v openssl >/dev/null 2>&1; then openssl rand -hex 24; else LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c 48; printf '\n'; fi
+}
+
+valid_hex() { [[ "$1" =~ ^#[0-9a-fA-F]{6}$ ]]; }
+valid_email() { [[ "$1" =~ ^[^[:space:]@]+@[^[:space:]@]+\.[^[:space:]@]+$ ]]; }
+valid_hostname() { [[ "$1" =~ ^([A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+[A-Za-z]{2,63}$ ]]; }
+
+env_escape() {
+  local value="$1"
+  value=${value//\\/\\\\}
+  value=${value//\"/\\\"}
+  value=${value//\$/\\$}
+  printf '%s' "$value"
+}
+
+read_default() {
+  local prompt="$1" default="$2" value
+  read -r -p "$prompt [$default]: " value
+  printf '%s' "${value:-$default}"
+}
+
+read_secret_required() {
+  local prompt="$1" value
+  while true; do
+    read -r -s -p "$prompt: " value
+    printf '\n' >&2
+    [[ -n "$value" ]] && { printf '%s' "$value"; return; }
+    warn "This value is required."
+  done
+}
+
+load_env() {
+  [[ -f "$ENV_FILE" ]] || die "Missing .env. Run: bash nfrp setup"
+
+  local line key value
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    line="${line%$'\r'}"
+    [[ -z "$line" || "$line" == \#* ]] && continue
+    [[ "$line" == *=* ]] || continue
+
+    key="${line%%=*}"
+    value="${line#*=}"
+    [[ "$key" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || die "Invalid key in .env: $key"
+
+    if [[ "$value" == \"*\" && "$value" == *\" ]]; then
+      value="${value:1:${#value}-2}"
+      value="${value//\\\"/\"}"
+      value="${value//\\\$/\$}"
+      value="${value//\\\\/\\}"
+    elif [[ "$value" == \'*\' && "$value" == *\' ]]; then
+      value="${value:1:${#value}-2}"
+    fi
+
+    printf -v "$key" '%s' "$value"
+    export "$key"
+  done < "$ENV_FILE"
+}
+
+profile_args() {
+  local mode="${DEPLOYMENT_MODE:-local}"
+  [[ "$mode" == "remote" ]] && printf '%s\n' '--profile' 'remote'
+}
+
+compose() {
+  local args=()
+  while IFS= read -r item; do args+=("$item"); done < <(profile_args)
+  (cd "$ROOT_DIR" && docker compose "${args[@]}" "$@")
+}
+
+service_state() {
+  local service="$1" cid
+  cid="$(compose ps -q "$service" 2>/dev/null || true)"
+  [[ -n "$cid" ]] || { printf 'not-created'; return; }
+  docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$cid" 2>/dev/null || printf 'unknown'
+}
+
+wait_for_app() {
+  local attempts="${1:-90}" state i
+  info "Waiting for NFRP to become healthy..."
+  for ((i=1; i<=attempts; i++)); do
+    state="$(service_state app)"
+    case "$state" in
+      healthy) printf '\n'; ok "NFRP is healthy."; return 0 ;;
+      unhealthy|exited|dead) printf '\n'; compose logs --tail=120 app >&2 || true; die "NFRP entered state: $state" ;;
+    esac
+    printf '.'
+    sleep 4
+  done
+  printf '\n'
+  compose logs --tail=160 app >&2 || true
+  die "NFRP did not become healthy in time. Review the logs above, then run: bash nfrp doctor"
+}
+
+setup() {
+  require_docker
+  umask 077
+  mkdir -p "$BRANDING_DIR"
+  chmod 755 "$BRANDING_DIR"
+
+  printf "%bNFRP guided setup%b\n" "$BOLD" "$RESET"
+  printf "Configure a branded operations platform without editing code.\n\n"
+
+  if [[ -f "$ENV_FILE" ]]; then
+    read -r -p ".env already exists. Replace it? [y/N] " answer
+    [[ "${answer,,}" == "y" ]] || die "Setup cancelled; current configuration was preserved."
+    cp "$ENV_FILE" "$ENV_FILE.backup.$(date +%Y%m%d_%H%M%S)"
+  fi
+
+  local company product subtitle admin_email admin_password db_password auth_secret
+  local primary primary_dark sidebar accent logo_path logo_source="" mode_choice deployment_mode bind_address app_port public_url tunnel_token=""
+
+  company="$(read_default 'Company name' 'Demo Logistics S.r.l.')"
+  product="$(read_default 'Product name' 'NFRP')"
+  subtitle="$(read_default 'Interface subtitle' 'Operations Platform')"
+
+  while true; do
+    admin_email="$(read_default 'Administrator email' 'admin@example.com')"
+    valid_email "$admin_email" && break
+    warn "Enter a valid email address."
+  done
+
+  printf '\nChoose a color palette. Press Enter to keep the defaults.\n'
+  while true; do primary="$(read_default 'Primary color' '#1f6feb')"; valid_hex "$primary" && break; warn 'Use #RRGGBB.'; done
+  while true; do primary_dark="$(read_default 'Primary dark color' '#185abc')"; valid_hex "$primary_dark" && break; warn 'Use #RRGGBB.'; done
+  while true; do sidebar="$(read_default 'Sidebar color' '#182230')"; valid_hex "$sidebar" && break; warn 'Use #RRGGBB.'; done
+  while true; do accent="$(read_default 'Positive accent color' '#1d7f4f')"; valid_hex "$accent" && break; warn 'Use #RRGGBB.'; done
+
+  read -r -p 'Optional logo path (PNG/JPG/WebP, Enter to skip): ' logo_path
+  if [[ -n "$logo_path" ]]; then
+    [[ -f "$logo_path" ]] || die "Logo file not found: $logo_path"
+    case "${logo_path,,}" in
+      *.png) logo_source="$BRANDING_DIR/company-logo.png" ;;
+      *.jpg|*.jpeg) logo_source="$BRANDING_DIR/company-logo.jpg" ;;
+      *.webp) logo_source="$BRANDING_DIR/company-logo.webp" ;;
+      *) die 'Logo must be PNG, JPG or WebP.' ;;
+    esac
+    rm -f "$BRANDING_DIR"/company-logo.{png,jpg,webp} 2>/dev/null || true
+    cp "$logo_path" "$logo_source"
+    # The logo is public UI content; the unprivileged container user must be able to read it.
+    chmod 644 "$logo_source"
+    logo_source="/bootstrap-branding/$(basename "$logo_source")"
+  fi
+
+  printf '\nAccess mode:\n  1) this server only\n  2) local network / reverse proxy\n  3) Cloudflare Tunnel\n'
+  read -r -p 'Choose [1]: ' mode_choice
+  case "${mode_choice:-1}" in
+    1) deployment_mode=local; bind_address=127.0.0.1 ;;
+    2) deployment_mode=lan; bind_address=0.0.0.0 ;;
+    3) deployment_mode=remote; bind_address=127.0.0.1 ;;
+    *) die 'Choose 1, 2 or 3.' ;;
+  esac
+
+  app_port="$(read_default 'HTTP port' '3000')"
+  [[ "$app_port" =~ ^[0-9]+$ ]] && (( app_port >= 1024 && app_port <= 65535 )) || die 'Port must be between 1024 and 65535.'
+
+  case "$deployment_mode" in
+    local) public_url="http://localhost:$app_port" ;;
+    lan)
+      public_url="$(read_default 'Public or LAN URL' "http://localhost:$app_port")"
+      ;;
+    remote)
+      local hostname
+      while true; do hostname="$(read_default 'Cloudflare public hostname' 'nfrp.example.com')"; valid_hostname "$hostname" && break; warn 'Enter a hostname without https://.'; done
+      public_url="https://$hostname"
+      printf '\nCreate a remotely managed Cloudflare Tunnel and route its Public Hostname to:\n  http://app:3000\n\n'
+      tunnel_token="$(read_secret_required 'Cloudflare tunnel token')"
+      ;;
+  esac
+
+  admin_password="$(random_secret)"
+  db_password="$(random_secret)"
+  auth_secret="$(random_secret)$(random_secret)"
+
+  cat > "$ENV_FILE.tmp" <<ENV
+# Generated by NFRP setup on $(date -Iseconds)
+DEPLOYMENT_MODE="$deployment_mode"
+DATABASE_URL="postgresql://nfrp:$db_password@postgres:5432/nfrp?schema=public"
+POSTGRES_USER="nfrp"
+POSTGRES_PASSWORD="$db_password"
+POSTGRES_DB="nfrp"
+ADMIN_EMAIL="$(env_escape "$admin_email")"
+ADMIN_PASSWORD="$admin_password"
+AUTH_SECRET="$auth_secret"
+APP_BIND_ADDRESS="$bind_address"
+APP_PORT="$app_port"
+APP_PUBLIC_URL="$(env_escape "$public_url")"
+COOKIE_SECURE=""
+BRAND_COMPANY_NAME="$(env_escape "$company")"
+BRAND_PRODUCT_NAME="$(env_escape "$product")"
+BRAND_SUBTITLE="$(env_escape "$subtitle")"
+BRAND_PRIMARY_COLOR="$primary"
+BRAND_PRIMARY_DARK_COLOR="$primary_dark"
+BRAND_SIDEBAR_COLOR="$sidebar"
+BRAND_ACCENT_COLOR="$accent"
+BRAND_LOGO_SOURCE="$logo_source"
+CLOUDFLARE_TOKEN="$tunnel_token"
+INGESTION_API_TOKEN=""
+ASSISTANT_ENABLED="false"
+OLLAMA_BASE_URL="http://ollama:11434"
+OLLAMA_MODEL="qwen3:1.7b"
+UPLOAD_DIR="/app/uploads"
+MAX_UPLOAD_MB="20"
+INBOX_OCR_ENABLED="true"
+INBOX_OCR_LANGUAGES="ita+eng"
+INBOX_OCR_TIMEOUT_SECONDS="180"
+INBOX_OCR_JOBS="0"
+INBOX_OCR_CLEAN="true"
+INBOX_ANALYSIS_CONCURRENCY="1"
+DOCUMENT_MIRROR_ENABLED="false"
+DOCUMENT_MIRROR_NEXTCLOUD_BASE_URL=""
+DOCUMENT_MIRROR_NEXTCLOUD_USER=""
+DOCUMENT_MIRROR_NEXTCLOUD_PASS=""
+DOCUMENT_MIRROR_NEXTCLOUD_FOLDER="NFRP Documents"
+TELEGRAM_BOT_TOKEN=""
+TELEGRAM_CHAT_IDS=""
+TELEGRAM_NOTIFICATIONS_ENABLED="false"
+NOTIFICATION_CRON="0 8 * * *"
+NOTIFICATION_TIMEZONE="Europe/Rome"
+NOTIFICATION_FAILURE_RETRIES="3"
+NOTIFICATION_RETRY_DELAY_MINUTES="10"
+TELEGRAM_SEND_ATTEMPTS="4"
+TELEGRAM_SEND_TIMEOUT_MS="15000"
+TELEGRAM_SEND_RETRY_DELAY_MS="3000"
+DEFAULT_NOTICE_DAYS="30"
+SEED_DEMO_DATA="true"
+ENV
+  chmod 600 "$ENV_FILE.tmp"
+  mv "$ENV_FILE.tmp" "$ENV_FILE"
+
+  load_env
+  info 'Validating Docker Compose configuration...'
+  compose config --quiet
+  info 'Building and starting NFRP...'
+  compose up -d --build --remove-orphans
+  wait_for_app 90
+
+  printf '\n%bSetup complete.%b\n' "$GREEN$BOLD" "$RESET"
+  printf 'URL:      %s\n' "$APP_PUBLIC_URL"
+  printf 'Email:    %s\n' "$ADMIN_EMAIL"
+  printf 'Password: %s\n' "$ADMIN_PASSWORD"
+  printf '\nCredentials remain in %s with mode 600.\n' "$ENV_FILE"
+  printf 'Next: bash nfrp doctor && bash nfrp demo\n'
+}
+
+start() { require_docker; load_env; compose config --quiet; compose up -d --build --remove-orphans; wait_for_app 90; ok "NFRP started: $APP_PUBLIC_URL"; }
+stop() { require_docker; [[ -f "$ENV_FILE" ]] && load_env || true; compose down; ok 'NFRP stopped. Persistent volumes were preserved.'; }
+status() { require_docker; [[ -f "$ENV_FILE" ]] && load_env || true; compose ps; }
+
+logs() {
+  require_docker; load_env
+  local service="${1:-}"
+  if [[ -n "$service" ]]; then
+    [[ "$service" =~ ^(app|postgres|cloudflared|ollama|notifications|document-mirror)$ ]] || die 'Unknown service.'
+    compose logs --tail=180 -f "$service"
+  else compose logs --tail=120 -f; fi
+}
+
+doctor() {
+  local failures=0 state mode
+  printf "%bNFRP doctor%b\n\n" "$BOLD" "$RESET"
+  if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then ok '[ok] Docker Compose v2'; else warn '[fail] Docker Compose v2'; failures=$((failures+1)); fi
+  if docker info >/dev/null 2>&1; then ok '[ok] Docker daemon reachable'; else warn '[fail] Docker daemon unreachable'; failures=$((failures+1)); fi
+  if [[ -f "$ENV_FILE" ]]; then
+    ok '[ok] .env exists'
+    mode="$(stat -c '%a' "$ENV_FILE" 2>/dev/null || stat -f '%Lp' "$ENV_FILE" 2>/dev/null || printf '?')"
+    [[ "$mode" == 600 ]] && ok '[ok] .env permissions: 600' || warn "[warn] .env permissions: $mode (recommended 600)"
+    load_env
+  else warn '[fail] .env missing'; failures=$((failures+1)); fi
+  if compose config --quiet >/dev/null 2>&1; then ok '[ok] Compose configuration valid'; else warn '[fail] Compose configuration invalid'; failures=$((failures+1)); fi
+  for service in postgres app; do
+    state="$(service_state "$service")"
+    case "$state" in healthy|running) ok "[ok] $service: $state" ;; starting) warn "[wait] $service: starting" ;; *) warn "[fail] $service: $state"; failures=$((failures+1)) ;; esac
+  done
+  if [[ "${DEPLOYMENT_MODE:-local}" == remote ]]; then
+    state="$(service_state cloudflared)"
+    [[ "$state" == running || "$state" == healthy ]] && ok "[ok] cloudflared: $state" || { warn "[fail] cloudflared: $state"; failures=$((failures+1)); }
+  fi
+  if command -v curl >/dev/null 2>&1 && [[ -n "${APP_PUBLIC_URL:-}" ]]; then
+    curl -fsS --max-time 15 "$APP_PUBLIC_URL/api/health" >/dev/null && ok '[ok] public health endpoint' || { warn '[fail] public health endpoint'; failures=$((failures+1)); }
+    local login_code
+    login_code="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 15 "$APP_PUBLIC_URL/dashboard" || true)"
+    [[ "$login_code" =~ ^(302|303|307|308)$ ]] && ok '[ok] protected dashboard redirects anonymous users' || warn "[warn] anonymous dashboard returned HTTP $login_code"
+  fi
+  printf '\n'
+  (( failures == 0 )) && ok 'Doctor completed: no blocking problems found.' || die "Doctor found $failures blocking problem(s)."
+}
+
+backup() { require_docker; load_env; compose --profile tools run --rm backup; ok 'Backup completed in the Docker volume named backups.'; }
+
+update_stack() {
+  require_docker; load_env
+  info 'Creating a safety backup...'; backup
+  info 'Rebuilding with current sources and images...'; compose pull --ignore-buildable; compose up -d --build --remove-orphans
+  wait_for_app 90
+  ok 'Update completed.'
+}
+
+credentials() { load_env; printf 'URL:      %s\nEmail:    %s\nPassword: %s\n' "$APP_PUBLIC_URL" "$ADMIN_EMAIL" "$ADMIN_PASSWORD"; }
+
+demo() {
+  load_env
+  printf "%bFive-minute NFRP demo%b\n\n" "$BOLD" "$RESET"
+  if command -v curl >/dev/null 2>&1; then
+    curl -fsS --max-time 15 "$APP_PUBLIC_URL/api/health" >/dev/null && ok '[ok] application health verified' || warn '[warn] application is not reachable yet'
+  fi
+  printf '1. Open: %s/login\n' "$APP_PUBLIC_URL"
+  printf '2. Login with: %s\n' "$ADMIN_EMAIL"
+  printf '3. Open Acquisisci → Autostrade.\n'
+  printf '4. Upload: examples/tolls/demo-tolls.csv\n'
+  printf '5. Review PENDING rows, upload it again to show deduplication, then confirm.\n'
+  printf '6. Open Autostrade and Centro costi to verify the result.\n'
+  printf '7. Open Impostazioni → Identità aziendale to change name, logo and palette live.\n'
+}
+
+main() {
+  cd "$ROOT_DIR"
+  case "${1:-help}" in
+    setup) setup ;;
+    start|up) start ;;
+    stop|down) stop ;;
+    status|ps) status ;;
+    doctor|check) doctor ;;
+    logs) shift; logs "${1:-}" ;;
+    backup) backup ;;
+    update) update_stack ;;
+    demo) demo ;;
+    credentials) credentials ;;
+    help|-h|--help) usage ;;
+    *) usage; die "Unknown command: $1" ;;
+  esac
+}
+
+main "$@"

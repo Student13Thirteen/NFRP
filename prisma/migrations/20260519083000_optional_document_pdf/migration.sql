@@ -1,0 +1,5 @@
+ALTER TABLE "Document"
+  ALTER COLUMN "filePath" DROP NOT NULL,
+  ALTER COLUMN "originalFileName" DROP NOT NULL,
+  ALTER COLUMN "fileSize" DROP NOT NULL,
+  ALTER COLUMN "mimeType" DROP NOT NULL;
