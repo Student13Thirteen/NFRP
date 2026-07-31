@@ -57,18 +57,30 @@ jobs:
           bash -n "$source_root/nfrp"
           bash -n "$source_root/scripts/ci_smoke.sh"
 
-      - name: Replace bootstrap repository with public source
+      - name: Publish source while preserving bootstrap workflow
         shell: bash
         run: |
           set -euo pipefail
           source_root='/tmp/nfrp-public/nfrp'
-          find . -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf -- {} +
-          cp -a "$source_root"/. .
+
+          # The repository token may publish source files but GitHub can reject
+          # a bot commit that creates or replaces workflow definitions. Keep
+          # this bootstrap workflow temporarily; the final CI workflow is
+          # installed separately after the source commit lands.
+          find . -mindepth 1 -maxdepth 1 \
+            ! -name .git ! -name .github \
+            -exec rm -rf -- {} +
+          find .github -mindepth 1 -maxdepth 1 \
+            ! -name workflows \
+            -exec rm -rf -- {} +
+          find .github/workflows -mindepth 1 -maxdepth 1 \
+            ! -name publish-uploaded-source.yml \
+            -exec rm -rf -- {} +
+
+          rsync -a --exclude='.github/workflows/' "$source_root"/ ./
           chmod +x nfrp scripts/*.sh
           git add -A
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git commit -m 'Publish NFRP public source'
           git push origin HEAD:main
-
-# Retriggered after verified ZIP upload on 2026-07-31.
