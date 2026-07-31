@@ -12,6 +12,7 @@ REQUIRED = [
     'docs/BRANDING.md', 'src/app/api/health/route.ts', 'scripts/ci_smoke.sh',
     'scripts/smoke-login.py'
 ]
+IGNORED_PATH_PARTS = {'.git'}
 FORBIDDEN_PATH_PARTS = {'.env', 'node_modules', '.next', 'uploads', 'backups', 'pb_data', '__pycache__'}
 FORBIDDEN_SUFFIXES = {'.db', '.sqlite', '.dump', '.bak', '.p12', '.pfx', '.key', '.pem', '.pyc'}
 SUSPICIOUS = {
@@ -41,6 +42,8 @@ for path in ROOT.rglob('*'):
     if not path.is_file():
         continue
     rel = path.relative_to(ROOT)
+    if any(part in IGNORED_PATH_PARTS for part in rel.parts):
+        continue
     if any(part in FORBIDDEN_PATH_PARTS for part in rel.parts):
         fail(f'forbidden runtime path tracked: {rel}')
     if path.suffix.lower() in FORBIDDEN_SUFFIXES:

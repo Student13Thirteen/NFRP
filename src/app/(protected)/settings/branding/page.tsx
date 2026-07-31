@@ -1,3 +1,4 @@
+import Image from 'next/image';
 import type { CSSProperties } from 'react';
 import { Palette, Save } from 'lucide-react';
 import { PageHeader } from '@/components/PageHeader';
@@ -88,7 +89,18 @@ export default async function BrandingSettingsPage() {
           <h2>Anteprima</h2>
           <div className="brand-preview-shell">
             <div className="brand-preview-sidebar">
-              {branding.logoUrl ? <img src={branding.logoUrl} alt={`Logo ${branding.companyName}`} /> : <strong>{branding.productName}</strong>}
+              {branding.logoUrl ? (
+                <Image
+                  src={branding.logoUrl}
+                  alt={`Logo ${branding.companyName}`}
+                  width={240}
+                  height={80}
+                  sizes="240px"
+                  unoptimized
+                />
+              ) : (
+                <strong>{branding.productName}</strong>
+              )}
               <span>{branding.companyName}</span>
               <small>{branding.subtitle}</small>
             </div>

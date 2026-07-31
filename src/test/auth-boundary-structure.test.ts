@@ -47,7 +47,9 @@ describe('authentication boundary structure', () => {
     const publicSessionExceptions = new Set([
       path.join(apiRoot, 'health/route.ts'),
       path.join(apiRoot, 'ingestion/route.ts'),
-      path.join(apiRoot, 'flash/route.ts')
+      path.join(apiRoot, 'flash/route.ts'),
+      // Company branding is intentionally visible on anonymous/login screens.
+      path.join(apiRoot, 'branding/logo/route.ts')
     ]);
 
     for (const routeFile of findFiles(apiRoot, 'route.ts')) {
