@@ -1,0 +1,36 @@
+name: Bootstrap diagnostics
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose-payload:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Inspect payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          chunks=(.payload/chunk-*)
+          echo "chunk_count=${#chunks[@]}"
+          (( ${#chunks[@]} > 0 )) || { echo 'No chunks found' >&2; exit 1; }
+          wc -c "${chunks[@]}"
+          cat "${chunks[@]}" > /tmp/source.b64
+          echo "base64_bytes=$(wc -c < /tmp/source.b64)"
+          base64 --decode /tmp/source.b64 > /tmp/source.tar.xz
+          echo "archive_bytes=$(wc -c < /tmp/source.tar.xz)"
+          xz --test /tmp/source.tar.xz
+          mkdir -p /tmp/source
+          tar -xJf /tmp/source.tar.xz -C /tmp/source
+          echo "file_count=$(find /tmp/source -type f | wc -l)"
+          find /tmp/source -maxdepth 3 -type f | sort | head -80
+          test -f /tmp/source/package.json || test -f /tmp/source/nfrp/package.json
