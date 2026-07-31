@@ -1,0 +1,71 @@
+name: Promote verified payload chunks
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/promote-payload.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  promote:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify and promote reusable chunks
+        shell: bash
+        run: |
+          set -euo pipefail
+          declare -A expected=(
+            [000]=80b1b15a1ff9a7e269e9596a3e52d6958b6414bd
+            [001]=313d57d6afe1ac2f1c7a9ef926557697da13afa1
+            [002]=7fc2154a58528c49e1a5ed72cf32236592d6ed49
+            [003]=9d0892cdcac279cd2bc45643c6811714bdb42e1f
+            [004]=5bf4423f235d05058363c06ff1c00ad47f8d0208
+            [005]=0a4dd9cd69007d403daf10c25142211267f7eec2
+            [006]=ec38667d8624e0e39d1ab7836cd8bbb86ca3aed1
+            [007]=990b17c149b68ac5730b1690dcc0f2896c5f4ebd
+            [008]=abec23bbd31d2caa9bb0582fac8325fe19bc0813
+            [009]=2699c3dd0242af2287c14ee984dc9df251100038
+            [010]=72aa07aefed14299a4a3e4c03601b689e2c7ff2f
+            [011]=d9c81733b3cf25a7dcc75ea6e1a8457aa49b42bd
+            [012]=9b42d95a808cacdf801098e0e14341e48de0d4ec
+            [013]=49d172e035ec958b443f6cce973ccd9a9ba4175c
+          )
+
+          mkdir -p .source-final
+          : > /tmp/rejected
+          for index in $(printf '%s\n' "${!expected[@]}" | sort); do
+            src=".source-payload/chunk-$index"
+            dst=".source-final/chunk-$index"
+            if [[ ! -f "$src" ]]; then
+              echo "$index missing" | tee -a /tmp/rejected
+              continue
+            fi
+            actual=$(git hash-object "$src")
+            if [[ "$actual" == "${expected[$index]}" ]]; then
+              cp "$src" "$dst"
+              echo "$index verified"
+            else
+              echo "$index rejected expected=${expected[$index]} actual=$actual" | tee -a /tmp/rejected
+            fi
+          done
+
+          echo 'Rejected or missing chunks:'
+          cat /tmp/rejected || true
+
+          git add .source-final
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          if git diff --cached --quiet; then
+            echo 'No reusable chunks to promote.'
+            exit 0
+          fi
+          git commit -m 'Promote verified NFRP source chunks'
+          git push origin HEAD:main
