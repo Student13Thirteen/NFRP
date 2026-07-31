@@ -70,3 +70,5 @@ jobs:
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git commit -m 'Publish NFRP public source'
           git push origin HEAD:main
+
+# Retriggered after verified ZIP upload on 2026-07-31.
