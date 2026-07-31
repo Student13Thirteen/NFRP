@@ -1,36 +1,36 @@
-# NFRP Portfolio Edition - contesto applicativo
+# NFRP Portfolio Edition — application context
 
-## Scopo
+## Purpose
 
-NFRP e un modular monolith per processi operativi di una PMI di trasporto. Questa Portfolio Edition mantiene architettura, workflow e test significativi, ma usa solo configurazione e dati sintetici. Il database web resta la fonte di verita; importazioni e OCR producono proposte revisionabili.
+NFRP is a modular monolith for the operational processes of a transport SME. This Portfolio Edition preserves meaningful architecture, workflows and tests, while using only synthetic configuration and data. The web database remains the source of truth; imports and OCR produce reviewable proposals.
 
 ## Stack
 
-- Next.js 16 App Router, React 19, TypeScript strict;
-- Prisma 5 e PostgreSQL 16;
-- sessione HMAC in cookie `HttpOnly`, `SameSite=Lax`;
-- Docker Compose per app e database;
-- OCR locale tramite OCRmyPDF, Tesseract, pikepdf, Ghostscript e Pillow quando installati;
-- Ollama opzionale per l'assistente read-only.
+- Next.js 16 App Router, React 19 and strict TypeScript;
+- Prisma 5 and PostgreSQL 16;
+- HMAC-signed sessions stored in `HttpOnly`, `SameSite=Lax` cookies;
+- Docker Compose for the application and database;
+- local OCR through OCRmyPDF, Tesseract, pikepdf, Ghostscript and Pillow when installed;
+- optional Ollama integration for the read-only assistant.
 
-## Regole funzionali
+## Functional rules
 
-- le route operative richiedono autenticazione sia nel proxy sia nel codice server;
-- i file sono conservati fuori da `public/` e serviti solo da route autenticate;
-- importazioni economiche e risultati OCR restano `PENDING` fino alla conferma umana;
-- chiavi di origine, hash e vincoli Prisma riducono le duplicazioni;
-- il centro costi esclude bozze e righe non contabilizzate;
-- i viaggi di distribuzione carburante e i viaggi container sono domini distinti;
-- l'assistente usa una whitelist di query Prisma read-only e non esegue SQL libero.
+- operational routes require authentication both at the proxy boundary and in server-side code;
+- files are stored outside `public/` and served only through authenticated routes;
+- financial imports and OCR results remain `PENDING` until a person explicitly confirms them;
+- source keys, hashes and Prisma constraints reduce duplicate records;
+- the cost center excludes drafts and unposted rows;
+- fuel-distribution trips and container trips remain distinct domains;
+- the assistant uses a whitelist of read-only Prisma queries and never executes arbitrary SQL.
 
-## Moduli
+## Modules
 
-Anagrafiche e flotta, archivio documenti, inbox OCR, viaggi, carburanti, pedaggi, manutenzioni e spese, leasing, magazzino, centro costi, notifiche, mirror documentale e assistente locale. Alcune integrazioni sono volutamente disattivate nel profilo demo.
+Master data and fleet, document archive, OCR inbox, trips, fuel, tolls, maintenance and expenses, leasing, warehouse, cost center, notifications, document mirror and local assistant. Some integrations are intentionally disabled in the demo profile.
 
-## Avvio e sicurezza
+## Startup and security
 
-Usare esclusivamente un database isolato creato dal Compose di questa directory. Copiare `.env.example` in `.env`, cambiare le credenziali prima di qualsiasi esposizione e non importare documenti reali nella demo pubblica. Le limitazioni note sono elencate in `SECURITY.md`.
+Use only the isolated database created by the Compose project in this directory. Copy `.env.example` to `.env`, replace the credentials before any exposure and never import real documents into the public demo. Known limitations are documented in `SECURITY.md`.
 
-## Verifica nota della candidata
+## Verification scope
 
-La verifica di consegna deve comprendere `npm run lint`, `npm run test`, `npm run build`, `prisma validate` e `docker compose config --quiet`. Il risultato puntuale appartiene al report tecnico esterno alla candidata, non a questo file.
+Release verification must include `npm run lint`, `npm run test`, `npm run build`, `prisma validate` and `docker compose config --quiet`. Point-in-time results belong in CI and the relevant technical report rather than in this context file.

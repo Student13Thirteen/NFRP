@@ -1,31 +1,31 @@
-# Visione NFRP Portfolio Edition
+# NFRP Portfolio Edition vision
 
-## Direzione
+## Direction
 
-Una sola codebase evolve da verticale trasporti a piattaforma ERP modulare. Il core fornisce identita, accesso, audit, documenti, notifiche, ricerca, workflow, reporting e impostazioni. I moduli di dominio contribuiscono route, permessi, eventi, parser e report senza duplicare shell o design system.
+A single codebase can evolve from a transport vertical into a modular ERP platform. The core provides identity, access control, audit, documents, notifications, search, workflows, reporting and settings. Domain modules contribute routes, permissions, events, parsers and reports without duplicating the application shell or design system.
 
 ```text
-core ERP
-+ moduli installabili
-+ vertical pack curato
-+ configurazione tenant
-= prodotto coerente per il settore
+ERP core
++ installable modules
++ curated vertical pack
++ tenant configuration
+= coherent product for the sector
 ```
 
-L'architettura iniziale resta un modular monolith: confini interni chiari, database relazionale e un solo deploy. Microservizi e caricamento di codice terzo non attendibile sono fuori dallo scope iniziale.
+The initial architecture remains a modular monolith: clear internal boundaries, a relational database and a single deployment unit. Microservices and the loading of untrusted third-party code are outside the initial scope.
 
 ## Document intelligence
 
-La pipeline comune e: acquisizione, separazione, classificazione, estrazione, punteggio di confidenza, revisione, validazione, commit e audit. OCR e AI propongono; la validazione applicativa e l'operatore decidono. I moduli registrano schema di estrazione, validatori e adapter di commit.
+The shared pipeline is acquisition, separation, classification, extraction, confidence scoring, review, validation, commit and audit. OCR and AI propose; application validation and the operator decide. Modules register extraction schemas, validators and commit adapters.
 
-## Multi-tenancy e moduli
+## Multi-tenancy and modules
 
-Prima di presentare la piattaforma come SaaS multi-azienda servono query tenant-safe, RBAC granulare, audit completo, migrazioni compatibili, backup/restore verificato e contratti di modulo versionati. I moduli iniziali sono pacchetti first-party affidabili e abilitati per configurazione.
+Before presenting the platform as a multi-company SaaS, it would require tenant-safe queries, granular RBAC, complete auditing, compatible migrations, verified backup and restore procedures, and versioned module contracts. Initial modules should remain trusted first-party packages enabled through configuration.
 
-## UX e distribuzione
+## UX and distribution
 
-La web app e la fonte di verita. PWA installabile e responsive viene prima di un eventuale wrapper desktop. L'offline deve iniziare da letture in cache o code di upload delimitate, non da mutazioni ERP generalizzate senza un disegno di conflitto e audit.
+The web application remains the source of truth. An installable, responsive PWA should come before any desktop wrapper. Offline support should begin with cached reads or bounded upload queues, not generalized ERP mutations without a deliberate conflict-resolution and audit model.
 
-## Confine pubblico
+## Public boundary
 
-La Portfolio Edition deve usare solo dati demo sintetici, integrazioni disattivate e documentazione priva di riferimenti operativi. Licenza e confine open-core sono decisioni legali e di prodotto ancora esplicite; non vanno dedotti dalla presenza del sorgente.
+The Portfolio Edition must use only synthetic demo data, disabled operational integrations and documentation free of operational references. Licensing and any open-core boundary remain explicit legal and product decisions; neither should be inferred from the availability of the source code.
