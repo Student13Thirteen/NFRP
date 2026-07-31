@@ -1,7 +1,7 @@
-# Assistente locale NFRP
+# NFRP local assistant
 
-L'assistente opzionale usa Ollama come planner locale e un catalogo chiuso di strumenti applicativi. Gli strumenti leggono dati tramite Prisma e restituiscono riepiloghi; non eseguono SQL libero e non includono comandi di creazione, modifica, conferma o cancellazione.
+The optional assistant uses Ollama as a local planner and a closed catalog of application tools. The tools read data through Prisma and return summaries; they do not execute arbitrary SQL and expose no create, update, confirmation or deletion commands.
 
-Il profilo demo parte con `ASSISTANT_ENABLED=false`. Per una dimostrazione isolata occorre avviare il profilo Compose `assistant`, scaricare separatamente un modello compatibile e abilitare la variabile. Prompt e risultati possono contenere dati caricati nell'ambiente: usare esclusivamente il dataset sintetico.
+The demo profile starts with `ASSISTANT_ENABLED=false`. For an isolated demonstration, start the Compose `assistant` profile, download a compatible model separately and enable the variable. Prompts and results may contain data loaded into the environment, so use only the synthetic dataset.
 
-Limiti da risolvere prima di un uso pubblico: rate limiting, quote, autorizzazione granulare per strumento, policy di retention dei prompt e test di prompt injection. L'autenticazione alla route non sostituisce questi controlli.
+Limitations that must be addressed before public use include rate limiting, quotas, granular per-tool authorization, prompt-retention policies and prompt-injection testing. Authentication at the route boundary does not replace these controls.
