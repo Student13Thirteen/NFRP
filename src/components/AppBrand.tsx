@@ -1,3 +1,4 @@
+import Image from 'next/image';
 import type { BrandingConfig } from '@/lib/branding-types';
 
 type AppBrandVariant = 'auth' | 'sidebar' | 'dashboard' | 'powered';
@@ -20,7 +21,14 @@ export function BrandLogo({
   return (
     <span className={`brand-logo brand-logo-${variant} ${className}`.trim()} aria-hidden="true">
       {branding?.logoUrl ? (
-        <img src={branding.logoUrl} alt="" />
+        <Image
+          src={branding.logoUrl}
+          alt=""
+          width={240}
+          height={80}
+          sizes="240px"
+          unoptimized
+        />
       ) : (
         <span className="brand-monogram">{branding?.productName || 'NFRP'}</span>
       )}
