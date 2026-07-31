@@ -1,33 +1,32 @@
-# Sicurezza
+# Security
 
-## Snapshot portfolio
+## Portfolio snapshot
 
-Questa candidata e destinata a revisione tecnica locale. Non collegarla a database, storage o integrazioni operative e non caricare documenti reali.
+This public edition is intended for local technical review. Do not connect it to operational databases, storage systems or integrations, and do not upload real documents.
 
-## Controlli presenti
+## Existing controls
 
-- sessione firmata HMAC con scadenza e cookie `HttpOnly`, `SameSite=Lax` e `Secure` in produzione;
-- doppio controllo sulle aree protette: proxy e guardie server;
-- API operative autenticate, salvo health check e ingestion separata con Bearer token;
-- file fuori dalla directory pubblica, nomi casuali e controlli di traversal;
-- password hash bcrypt;
-- assistente limitato a strumenti read-only dichiarati.
+- HMAC-signed sessions with expiration and `HttpOnly`, `SameSite=Lax` cookies, plus `Secure` cookies in HTTPS deployments;
+- two-layer protection for restricted areas through the application proxy and server-side guards;
+- authenticated operational APIs, except for the public health endpoint and the separate ingestion endpoint protected by a Bearer token;
+- uploaded files stored outside the public directory, with randomized names and path-traversal checks;
+- bcrypt password hashing;
+- assistant functionality restricted to explicitly declared read-only tools.
 
-## Limiti aperti
+## Known limitations
 
-- un solo ruolo applicativo e nessun RBAC granulare;
-- nessun rate limiting, lockout o protezione brute-force dedicata;
-- nessuna revoca server-side o rotazione identificatore di sessione;
-- nessun token CSRF esplicito o verifica `Origin` dedicata;
-- header CSP, HSTS, frame, MIME sniffing, referrer e permissions da definire;
-- multi-tenancy e audit autorizzativo non completi;
-- dipendenze con advisory note al momento dell'handoff.
+- a single application role and no granular RBAC;
+- no dedicated rate limiting, account lockout or brute-force protection;
+- no server-side session revocation or session identifier rotation;
+- no explicit CSRF token or dedicated `Origin` verification;
+- CSP, HSTS, frame, MIME-sniffing, referrer and permissions headers still require a complete production policy;
+- multi-tenancy and authorization auditing are not complete.
 
-Segnalare problemi privatamente al maintainer del futuro repository. Non aprire issue pubbliche contenenti credenziali, documenti o dati personali.
+Report security issues privately to the repository maintainer. Do not open public issues containing credentials, documents, personal data or exploitable details.
 
 ## Company branding boundary
 
-The company logo is intentionally available through a narrow public image endpoint so that it can appear on the login screen. Upload is authenticated, limited to PNG/JPG/WebP, capped at 2 MB and checked by file signature. Branding files live in the uploads volume and are not committed.
+The company logo is intentionally available through a narrow public image endpoint so that it can appear on the login screen. Upload is authenticated, limited to PNG, JPG or WebP, capped at 2 MB and checked by file signature. Branding files live in the uploads volume and are not committed.
 
 ## Public repository rule
 
