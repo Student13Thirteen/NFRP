@@ -1,0 +1,58 @@
+name: Validate
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  quality-and-clean-room:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      DATABASE_URL: postgresql://demo:demo@127.0.0.1:65535/demo
+      AUTH_SECRET: ci-only-placeholder-with-at-least-32-characters
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Repository safety boundary
+        run: python3 scripts/validate-public-repo.py
+
+      - name: CLI and smoke-test syntax
+        run: |
+          bash -n nfrp
+          bash -n scripts/ci_smoke.sh
+          python3 scripts/smoke-login.py --help >/dev/null
+
+      - name: ShellCheck
+        run: shellcheck --severity=warning nfrp scripts/ci_smoke.sh
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Validate Prisma schema
+        run: npx prisma validate
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Unit tests
+        run: npm run test
+
+      - name: Production build
+        run: npm run build
+
+      - name: Validate Docker Compose model
+        run: ENV_FILE=.env.example docker compose --env-file .env.example config --quiet
+
+      - name: Clean-room installation and authenticated login
+        run: bash scripts/ci_smoke.sh
