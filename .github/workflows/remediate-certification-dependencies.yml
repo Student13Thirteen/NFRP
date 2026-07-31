@@ -1,0 +1,48 @@
+name: Remediate certification dependencies
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/remediate-certification-dependencies.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  remediate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ci/final-clean-room-validation
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Upgrade patched Next.js release
+        run: npm install --save-exact next@16.2.11 eslint-config-next@16.2.11
+
+      - name: Apply compatible advisory fixes
+        run: npm audit fix
+
+      - name: Require no high production advisories
+        run: npm audit --omit=dev --audit-level=high
+
+      - name: Commit lockfile remediation
+        shell: bash
+        run: |
+          set -euo pipefail
+          git add package.json package-lock.json
+          if git diff --cached --quiet; then
+            echo 'No dependency changes were required.'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'Remediate production dependency advisories'
+          git push origin HEAD:ci/final-clean-room-validation
