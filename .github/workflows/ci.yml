@@ -7,9 +7,45 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
+  remediate-production-dependencies:
+    if: github.event_name == 'pull_request' && github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.head_ref }}
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install patched production dependencies
+        run: |
+          npm pkg set overrides.next.postcss=8.5.22
+          npm install --save-exact next@16.2.11 postcss@8.5.22 sharp@0.35.3
+          npm install --save-dev --save-exact eslint-config-next@16.2.11
+          npm audit fix || true
+          npm audit --omit=dev --audit-level=high
+
+      - name: Commit remediated lockfile
+        shell: bash
+        run: |
+          set -euo pipefail
+          git add package.json package-lock.json
+          if git diff --cached --quiet; then
+            echo 'No dependency changes were required.'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'Remediate production dependency advisories'
+          git push origin HEAD:${{ github.head_ref }}
+
   quality-and-clean-room:
     runs-on: ubuntu-24.04
     timeout-minutes: 45
@@ -17,9 +53,9 @@ jobs:
       DATABASE_URL: postgresql://demo:demo@127.0.0.1:65535/demo
       AUTH_SECRET: ci-only-placeholder-with-at-least-32-characters
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: 20
           cache: npm
@@ -41,8 +77,8 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Report production dependency advisories
-        run: npm audit --omit=dev || true
+      - name: Require no high production advisories
+        run: npm audit --omit=dev --audit-level=high
 
       - name: Validate Prisma schema
         run: npx prisma validate
