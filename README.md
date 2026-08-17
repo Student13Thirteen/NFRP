@@ -1,152 +1,207 @@
 # NFRP
 
-**A self-hosted operations platform that turns documents and exports into reviewable, traceable business workflows.**
+**A self-hosted transport operations platform for documents, OCR-assisted imports, fleet workflows and cost control.**
 
-NFRP is the first concrete vertical produced from a broader idea: build a reusable operational core, then adapt it to the workflows of a specific small business. The reference implementation focuses on transport operations, where documents, trips, fuel, tolls, leasing, maintenance, warehouse movements and cost control must remain connected.
+[![Validate](https://github.com/Student13Thirteen/NFRP/actions/workflows/ci.yml/badge.svg)](https://github.com/Student13Thirteen/NFRP/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-2563eb.svg)](LICENSE)
 
-The core principle is simple:
+NFRP turns PDFs, scans and exported files into proposals that an operator can inspect before they become business records.
 
 ```text
-import or upload
-      ↓
-parse and validate
-      ↓
-create a PENDING proposal
-      ↓
-human review
-      ↓
-explicit confirmation
-      ↓
-operational record and cost center
+upload or import → extract → check → human review → confirm → operational record
 ```
 
-Automation proposes; a person confirms.
+Automation proposes. A person confirms.
 
-## One guided server setup
+> New to servers? Start with the [step-by-step beginner guide](docs/BEGINNER_GUIDE.md). It assumes no prior experience.
 
-Prerequisites: a Linux server with Docker Engine and Docker Compose v2.
+## Choose your path
+
+| I want to… | Use this |
+|---|---|
+| See the product without installing anything | Open the [interactive product tour](https://student13thirteen.github.io/NFRP/) |
+| Run the complete application | Follow **Install on a Linux server** below |
+| Show a reliable five-minute demo | Run `bash nfrp demo` after installation |
+| Understand what is included in this release | Read the [17 August 2026 release snapshot](docs/RELEASE_2026-08-17.md) |
+
+The GitHub Pages experience is an interactive, synthetic product tour. It does not pretend to run OCR or a database in the browser. The complete application uses Next.js, PostgreSQL, Prisma and Docker.
+
+## Install on a Linux server
+
+You need:
+
+- a Linux server or Linux computer;
+- Docker Engine running;
+- Docker Compose v2 (`docker compose version` must work);
+- at least 4 GB of RAM for the base application;
+- Git.
+
+You do **not** need Node.js, PostgreSQL or OCR tools on the host. Docker provides them.
+
+### 1. Download NFRP
 
 ```bash
-git clone https://github.com/Student13Thirteen/nfrp.git
-cd nfrp
+git clone https://github.com/Student13Thirteen/NFRP.git
+cd NFRP
+```
+
+### 2. Run the guided setup
+
+```bash
 bash nfrp setup
 ```
 
-The setup asks for:
+Press Enter to accept any suggested default. The setup asks for:
 
 - company and product name;
 - administrator email;
-- optional company logo;
-- primary, sidebar and accent colors;
-- local, LAN/reverse-proxy or Cloudflare Tunnel access;
+- optional logo and colors;
+- access mode: this server, local network/reverse proxy, or Cloudflare Tunnel;
 - application port.
 
-It then generates strong secrets, validates Compose, builds the application, runs migrations, creates the administrator and synthetic demo data, imports the optional logo, waits for a verified health response and prints the login details. The command does not report success when the application is unhealthy.
+It then creates private secrets, builds the containers, applies all database migrations, loads synthetic demo records and waits until the application is healthy. At the end it prints the URL, administrator email and generated password.
+
+### 3. Verify and sign in
 
 ```bash
 bash nfrp doctor
-bash nfrp demo
+bash nfrp credentials
 ```
 
-## Operations CLI
+Open the printed URL in a browser and sign in. The generated `.env` file contains the initial credentials, is ignored by Git and is created with permissions `600`.
 
-| Command | Purpose |
-|---|---|
-| `bash nfrp setup` | guided installation and branding |
-| `bash nfrp start` | start or reconcile the stack |
-| `bash nfrp stop` | stop containers without deleting data |
-| `bash nfrp status` | show services and health |
-| `bash nfrp doctor` | verify Docker, configuration, runtime and auth boundary |
-| `bash nfrp logs app` | follow one service log |
-| `bash nfrp backup` | PostgreSQL dump plus uploaded-file archive |
-| `bash nfrp update` | backup, rebuild and restart |
-| `bash nfrp demo` | verify and print the five-minute demo path |
-| `bash nfrp credentials` | show the locally stored initial login |
-
-## Runtime company branding
-
-The same codebase can be adapted without a fork. During setup—or later from **Settings → Company identity**—an administrator can change:
-
-- company name;
-- product name and subtitle;
-- company logo;
-- primary and dark-primary colors;
-- sidebar color;
-- positive accent color.
-
-Branding is stored as configuration and uploaded data, not hard-coded into the application. See [`docs/BRANDING.md`](docs/BRANDING.md).
-
-## What the reference vertical includes
-
-- signed-session authentication and protected application boundary;
-- driver, tractor, trailer and related-entity registries;
-- document inbox, local OCR and review flows;
-- controlled imports for trips, fuel, tolls, expenses and leasing;
-- deterministic parsing, deduplication and coherence checks;
-- human-confirmed `PENDING` workflows;
-- maintenance and warehouse operations;
-- cross-module cost center and PDF reports;
-- optional read-only local assistant with whitelisted tools;
-- optional Telegram and Nextcloud workers;
-- PostgreSQL, Prisma migrations, Docker Compose and synthetic seed data;
-- Vitest, ESLint, production build and repository safety checks.
-
-## Five-minute demo
+If anything fails, run:
 
 ```bash
-bash nfrp demo
+bash nfrp status
+bash nfrp logs app
 ```
 
-The flagship demo uses [`examples/tolls/demo-tolls.csv`](examples/tolls/demo-tolls.csv):
+## Your first ten minutes
 
-1. upload the synthetic CSV from **Acquire → Tolls**;
-2. inspect parsed `PENDING` rows and plate matching;
-3. upload the same file again to demonstrate deduplication;
-4. review and explicitly confirm the rows;
-5. verify the result in **Tolls** and **Cost center**;
-6. change company name, logo and palette from **Settings → Company identity**.
+1. Sign in and open **Panoramica**.
+2. Open **Acquisisci** to see every supported import from one place.
+3. Run `bash nfrp demo` in the terminal.
+4. Follow the printed path and upload `examples/tolls/demo-tolls.csv`.
+5. Review the proposed rows before confirming them.
+6. Upload the same file again to see duplicate protection.
+7. Open **Autostrade** and **Centro costi** to verify the confirmed result.
+8. Open **Impostazioni → Identità aziendale** to change company name, logo and palette.
+
+All records installed by default are synthetic. Do not upload real company documents to a public or disposable demo.
+
+## What the complete application includes
+
+- authenticated, protected operator workspace;
+- customer, supplier, driver, tractor, trailer and other-entity registries;
+- fiscal and contact fields for customers and suppliers;
+- dated driver employment periods and dated tractor-driver assignments;
+- document inbox with local OCR, field extraction and human review;
+- trip-bill OCR with approximate driver-name suggestions and mandatory operator validation;
+- separate fuel-delivery and container-transport workflows;
+- fuel, toll, leasing, maintenance, warehouse and expense imports;
+- duplicate protection, coherence checks and explicit `PENDING` states;
+- recoverable form drafts and idempotent manual fuel/expense submissions;
+- reversible toll discard and restore, without discarded rows entering costs or reports;
+- split expense-line allocation across vehicles and warehouse items;
+- expiring and non-expiring documents, including digital tachograph evidence;
+- cross-module cost center and PDF reports;
+- optional read-only local assistant backed by Ollama;
+- optional Telegram expiry notifications;
+- optional automatic document mirroring to Nextcloud;
+- runtime company branding without a code fork;
+- PostgreSQL migrations, synthetic seed data and clean-room CI.
+
+The public repository mirrors the application behavior as of 17 August 2026 while replacing company-specific data, parser fixtures and identifiers with synthetic equivalents. See the [release boundary](docs/RELEASE_2026-08-17.md) for the exact meaning of parity.
+
+## Everyday commands
+
+Run commands from the cloned `NFRP` directory.
+
+| Command | What it does | Deletes data? |
+|---|---|---|
+| `bash nfrp start` | Starts or reconciles the app and every enabled optional service | No |
+| `bash nfrp stop` | Stops containers and preserves volumes | No |
+| `bash nfrp status` | Shows container and health status | No |
+| `bash nfrp doctor` | Checks Docker, configuration, health and login protection | No |
+| `bash nfrp logs app` | Follows application logs; use `Ctrl+C` to exit | No |
+| `bash nfrp backup` | Creates a database dump and uploads archive in the backup volume | No |
+| `bash nfrp update` | Creates a safety backup, rebuilds and restarts | No |
+| `bash nfrp demo` | Prints and verifies the deterministic demo path | No |
+| `bash nfrp credentials` | Prints the local URL and initial administrator login | No |
+
+### Safe update from GitHub
+
+```bash
+git pull --ff-only
+bash nfrp update
+bash nfrp doctor
+```
+
+`bash nfrp update` creates a safety backup before rebuilding. For disaster recovery, also copy backups away from the server: a backup stored only on the same machine is not enough.
+
+Do not rerun `bash nfrp setup` over an existing installation unless you intentionally want to replace its configuration. The script asks before replacing `.env` and saves the previous file, but production upgrades should always be tested on a copy first.
 
 ## Access modes
 
-- **Local:** bound to `127.0.0.1`.
-- **LAN / reverse proxy:** bound to `0.0.0.0`; the operator supplies the public URL.
-- **Cloudflare Tunnel:** no router port forwarding; setup enables the optional `cloudflared` Compose profile using a locally stored tunnel token.
+- **This server only:** binds to `127.0.0.1`; use it locally or behind a reverse proxy on the same host.
+- **LAN / reverse proxy:** binds to `0.0.0.0`; protect the host with a firewall and expose only the intended application endpoint.
+- **Cloudflare Tunnel:** uses the optional `cloudflared` container and requires no router port forwarding.
 
-NFRP does not expose PostgreSQL on a host port.
+NFRP never publishes the PostgreSQL port on the host.
+
+For network details, cookies and upgrades, read [Server setup](docs/SETUP.md).
+
+## Optional integrations
+
+The base application works without external services. Enable integrations only after the core installation passes `bash nfrp doctor`.
+
+- **Nextcloud:** mirrors new or changed PDFs through WebDAV and moves them when their application status changes.
+- **Telegram:** sends scheduled document-expiry notifications.
+- **Ollama:** powers the optional read-only NFRP Bot with a local model.
+
+The exact variables, start commands, folder semantics and safety notes are in [Optional integrations](docs/INTEGRATIONS.md). Once an integration flag is enabled in `.env`, `bash nfrp start` automatically includes the required Docker Compose profile.
+
+## Branding
+
+During setup—or later from **Impostazioni → Identità aziendale**—an administrator can change the company name, product name, subtitle, logo and interface palette. Branding is stored as configuration and uploaded data, not hard-coded into the app. See [Branding](docs/BRANDING.md).
 
 ## Development and verification
 
+Application development requires Node.js 20 or later.
+
 ```bash
 npm ci
+npm run prisma:generate
 npm run lint
 npm run test
 npm run build
-bash -n nfrp
-ENV_FILE=.env.example docker compose --env-file .env.example config --quiet
 python3 scripts/validate-public-repo.py
 bash scripts/ci_smoke.sh
 ```
 
-The repository contains only synthetic examples. It excludes production databases, uploads, backups, logs, credentials, operational endpoints and company records.
+The clean-room check builds the real Docker image, starts an empty PostgreSQL database, applies every migration, seeds synthetic records, verifies branding and performs an authenticated login over HTTP.
 
-The CI clean-room job also builds the real Docker image from an empty workspace, migrates PostgreSQL, seeds synthetic records, verifies setup-time branding and logo import, checks the anonymous redirect boundary, and completes an authenticated administrator login over local HTTP. The Cloudflare profile is validated separately without storing an operational tunnel token.
+## Security and data boundary
 
+This repository contains no production database, uploads, backups, `.env`, credentials, private endpoints or operational company records. All public companies, people, plates, fiscal identifiers and documents are synthetic.
 
-## Scope and honesty
+Before using NFRP with real data, review [SECURITY.md](SECURITY.md). The project is a self-hosted reference implementation, not a hardened multi-tenant SaaS. In particular, review access control, reverse-proxy headers, rate limiting, restore procedures and off-site backups for your environment.
 
-NFRP is an AI-assisted project. The product requirements, workflows, deployment choices, integrations, testing, troubleshooting, documentation and iterative verification were directed around real operational needs. The repository does not claim that every line was written manually or without assistance.
+## Documentation map
 
-It is a self-hosted reference implementation and portfolio project—not a generic multi-tenant SaaS, a high-availability enterprise platform or a guarantee of suitability for every business without review.
+- [Beginner guide](docs/BEGINNER_GUIDE.md)
+- [Server setup](docs/SETUP.md)
+- [Five-minute demo](docs/DEMO.md)
+- [Optional integrations](docs/INTEGRATIONS.md)
+- [Company branding](docs/BRANDING.md)
+- [17 August 2026 release snapshot](docs/RELEASE_2026-08-17.md)
+- [Security model and limits](SECURITY.md)
+- [Product origin](docs/PRODUCT_ORIGIN.md)
+- [Platform vision](docs/ERP_PLATFORM_VISION.md)
 
-## Documentation
+## Project scope and license
 
-- [`docs/SETUP.md`](docs/SETUP.md) — deployment and access modes;
-- [`docs/DEMO.md`](docs/DEMO.md) — deterministic demonstration workflow;
-- [`docs/BRANDING.md`](docs/BRANDING.md) — company identity and logo boundary;
-- [`docs/PRODUCT_ORIGIN.md`](docs/PRODUCT_ORIGIN.md) — relationship with the earlier modular-platform exploration;
-- [`docs/ERP_PLATFORM_VISION.md`](docs/ERP_PLATFORM_VISION.md) — longer-term core-plus-vertical thesis;
-- [`SECURITY.md`](SECURITY.md) — security model and known limits.
+NFRP is an AI-assisted, operator-directed project developed around real operational requirements. It does not claim that every line was written manually, nor that one configuration fits every company without review.
 
-## License
-
-MIT for the source files in this repository. All included companies, people, identifiers, documents and scenarios are synthetic.
+Source code is available under the [MIT License](LICENSE). All included scenarios and data are synthetic.
