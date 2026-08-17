@@ -11,7 +11,8 @@ import {
   expenseDocumentInclude,
   filterAndSortExpenseDocuments,
   formatEuroCents,
-  getAllocationLabel,
+  getExpenseAllocationLabel,
+  getExpenseLineAllocations,
   normalizeExpenseDocumentListFilters,
   type ExpenseLineWithRelations
 } from '@/lib/expense';
@@ -30,7 +31,9 @@ type ExpensesPageProps = {
 };
 
 function allocationSummary(lines: ExpenseLineWithRelations[]): string {
-  const labels = Array.from(new Set(lines.map((line) => getAllocationLabel(line))));
+  const labels = Array.from(new Set(lines.flatMap((line) =>
+    getExpenseLineAllocations(line).map((allocation) => getExpenseAllocationLabel(allocation))
+  )));
   if (labels.length === 0) return '-';
   if (labels.length <= 2) return labels.join(', ');
   return `${labels.slice(0, 2).join(', ')} +${labels.length - 2}`;
@@ -38,7 +41,9 @@ function allocationSummary(lines: ExpenseLineWithRelations[]): string {
 
 function odometerSummary(lines: ExpenseLineWithRelations[]): string {
   const values = Array.from(
-    new Set(lines.flatMap((line) => line.odometerKm === null ? [] : [line.odometerKm]))
+    new Set(lines.flatMap((line) => getExpenseLineAllocations(line).flatMap(
+      (allocation) => allocation.odometerKm === null ? [] : [allocation.odometerKm]
+    )))
   );
   if (values.length === 0) return '-';
   if (values.length <= 2) return values.map((value) => value.toLocaleString('it-IT')).join(', ');

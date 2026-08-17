@@ -3,13 +3,17 @@ import Link from 'next/link';
 import { Plus } from 'lucide-react';
 import { PageHeader } from '@/components/PageHeader';
 import { prisma } from '@/lib/db';
+import { getDriverEmploymentSummary, getDriverEmploymentSummaryLabel } from '@/lib/driver-employment-core';
 import { createDriverAction } from './actions';
 
 export default async function DriversPage() {
   await requireUser();
   const drivers = await prisma.driver.findMany({
     orderBy: [{ active: 'desc' }, { lastName: 'asc' }, { firstName: 'asc' }],
-    include: { _count: { select: { documents: true } } }
+    include: {
+      employmentPeriods: { select: { startDate: true, endDate: true } },
+      _count: { select: { documents: true } }
+    }
   });
 
   return (
@@ -58,12 +62,15 @@ export default async function DriversPage() {
                 <th>Autista</th>
                 <th>Contatti</th>
                 <th>Stato</th>
+                <th>Rapporto di lavoro</th>
                 <th>Documenti</th>
               </tr>
             </thead>
             <tbody>
               {drivers.map((driver) => {
                 const driverHref = `/drivers/${driver.id}`;
+                const employment = getDriverEmploymentSummary(driver.employmentPeriods);
+                const employmentLabel = getDriverEmploymentSummaryLabel(employment);
 
                 return (
                   <tr className="clickable-row" key={driver.id}>
@@ -85,6 +92,9 @@ export default async function DriversPage() {
                       <Link className="table-cell-link" href={driverHref}>
                         {driver.active ? 'Attivo' : 'Non attivo'}
                       </Link>
+                    </td>
+                    <td className="click-cell">
+                      <Link className="table-cell-link" href={driverHref}>{employmentLabel}</Link>
                     </td>
                     <td className="click-cell">
                       <Link className="table-cell-link" href={driverHref}>

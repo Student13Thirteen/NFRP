@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { formatDate } from '@/lib/dates';
 import { prisma } from '@/lib/db';
-import { formatEuroCents } from '@/lib/expense-shared';
+import { allocateExpenseLineAmounts, formatEuroCents } from '@/lib/expense-shared';
 
 type VehicleExpensesPanelProps =
   | { tractorId: string; trailerId?: undefined }
@@ -23,29 +23,50 @@ function ivatoFromNetto(nettoCents: number, vatRatePercent: number | null): numb
 }
 
 export async function VehicleExpensesPanel(props: VehicleExpensesPanelProps) {
-  const where = props.tractorId ? { tractorId: props.tractorId } : { trailerId: props.trailerId };
+  const vehicleWhere = props.tractorId ? { tractorId: props.tractorId } : { trailerId: props.trailerId };
 
   const [lines, movements] = await Promise.all([
     prisma.expenseLine.findMany({
-      where: { ...where, document: { status: 'CONFIRMED' } },
-      include: { document: { include: { supplier: true } } }
+      where: {
+        document: { status: 'CONFIRMED' },
+        OR: [vehicleWhere, { allocations: { some: vehicleWhere } }]
+      },
+      include: {
+        allocations: { orderBy: { position: 'asc' } },
+        document: { include: { supplier: true } }
+      }
     }),
     prisma.warehouseMovement.findMany({
-      where: { ...where, type: 'UNLOAD' },
+      where: { ...vehicleWhere, type: 'UNLOAD' },
       include: { warehouseItem: true }
     })
   ]);
 
   const rows: Row[] = [
-    ...lines.map((line) => ({
-      key: `line-${line.id}`,
-      date: line.document.registeredAt,
-      source: line.document.supplier?.name || line.document.supplierName || 'Documento di spesa',
-      description: line.description,
-      odometerKm: line.odometerKm,
-      nettoCents: line.imponibileCents,
-      ivatoCents: line.totalCents
-    })),
+    ...lines.flatMap((line) => {
+      const allocations = line.allocations.length > 0 ? line.allocations : [{
+        id: `legacy-${line.id}`,
+        quantityMilli: line.quantityMilli,
+        tractorId: line.tractorId,
+        trailerId: line.trailerId,
+        odometerKm: line.odometerKm
+      }];
+      const amounts = allocateExpenseLineAmounts(line, allocations);
+      return allocations.flatMap((allocation, index) => {
+        const matches = props.tractorId
+          ? allocation.tractorId === props.tractorId
+          : allocation.trailerId === props.trailerId;
+        return matches ? [{
+          key: `line-${line.id}-${allocation.id}`,
+          date: line.document.registeredAt,
+          source: line.document.supplier?.name || line.document.supplierName || 'Documento di spesa',
+          description: line.description,
+          odometerKm: allocation.odometerKm,
+          nettoCents: amounts[index].imponibileCents,
+          ivatoCents: amounts[index].totalCents
+        }] : [];
+      });
+    }),
     ...movements.map((movement) => {
       const netto = movement.amountCents ?? 0;
       return {

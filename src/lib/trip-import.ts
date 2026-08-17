@@ -5,12 +5,13 @@ import {
   ContainerTripStatus,
   Prisma,
   TripImportRowStatus,
-  type ContainerCustomer,
+  type Customer,
   type Tractor,
   type Trailer,
   type TripImportRow
 } from '@prisma/client';
 import { prisma } from '@/lib/db';
+import { findDriverNameSuggestion, type DriverNameCandidate } from '@/lib/driver-name-match';
 import { extractInboxPdfTextFromBuffer } from '@/lib/inbox-analysis';
 import { removeStoredPdf, storePdfFile, type StoredPdf } from '@/lib/files';
 import {
@@ -140,16 +141,16 @@ async function ensureCustomer(
   tx: PrismaClientOrTx,
   row: ParsedTripWaybill,
   createdCustomerIds: Set<string>
-): Promise<ContainerCustomer | null> {
+): Promise<Customer | null> {
   const code = row.customerCode?.trim() || null;
   const name = compactEntityName(row.customerName, code ? `Committente ${code}` : '');
   if (!code && !name) return null;
 
   if (code) {
-    const existing = await tx.containerCustomer.findUnique({ where: { code } });
+    const existing = await tx.customer.findUnique({ where: { code } });
     if (existing) return existing;
 
-    const created = await tx.containerCustomer.create({
+    const created = await tx.customer.create({
       data: {
         code,
         name,
@@ -160,10 +161,10 @@ async function ensureCustomer(
     return created;
   }
 
-  const existingByName = await tx.containerCustomer.findFirst({ where: { name: { equals: name, mode: 'insensitive' } } });
+  const existingByName = await tx.customer.findFirst({ where: { name: { equals: name, mode: 'insensitive' } } });
   if (existingByName) return existingByName;
 
-  const created = await tx.containerCustomer.create({
+  const created = await tx.customer.create({
     data: {
       name,
       notes: 'Aggiunto automaticamente dall import bolle viaggio.'
@@ -183,9 +184,10 @@ function buildImportRowData(input: {
   row: ParsedTripWaybill;
   rowIndex: number;
   sourceKey: string;
+  driver: DriverNameCandidate | null;
   tractor: Tractor | null;
   trailer: Trailer | null;
-  customer: ContainerCustomer | null;
+  customer: Customer | null;
   reviewReasons: string | null;
 }): Prisma.TripImportRowCreateInput {
   return {
@@ -198,6 +200,7 @@ function buildImportRowData(input: {
     documentDate: input.row.documentDate,
     tripDate: input.row.tripDate,
     driverName: input.row.driverName,
+    driver: input.driver ? { connect: { id: input.driver.id } } : undefined,
     tractorPlate: input.row.tractorPlate,
     tractor: input.tractor ? { connect: { id: input.tractor.id } } : undefined,
     trailerPlate: input.row.trailerPlate,
@@ -257,6 +260,9 @@ async function createTripRowsFromStoredPdf(storedPdf: StoredPdf, fileBuffer: Buf
     const createdLocationIds = new Set<string>();
     let importedRows = 0;
     let duplicateRows = 0;
+    const drivers = await tx.driver.findMany({
+      select: { id: true, firstName: true, lastName: true, active: true }
+    });
 
     for (const [index, row] of parsed.rows.entries()) {
       const sourceKey = sourceKeyFor(row, index);
@@ -267,6 +273,10 @@ async function createTripRowsFromStoredPdf(storedPdf: StoredPdf, fileBuffer: Buf
       }
 
       const additionalReviewReasons: string[] = [];
+      const driver = findDriverNameSuggestion(row.driverName, drivers)?.driver || null;
+      if (row.driverName && !driver) {
+        additionalReviewReasons.push('Autista OCR non associato: selezionalo in revisione.');
+      }
       const tractor = await ensureTractor(tx, row.tractorPlate, createdTractorIds);
       const trailer = await ensureTrailer(tx, row.trailerPlate, tractor?.id || null, createdTrailerIds);
       const customer = await ensureCustomer(tx, row, createdCustomerIds);
@@ -277,6 +287,7 @@ async function createTripRowsFromStoredPdf(storedPdf: StoredPdf, fileBuffer: Buf
           row,
           rowIndex: index,
           sourceKey,
+          driver,
           tractor,
           trailer,
           customer,
@@ -390,7 +401,10 @@ async function getPendingRows(where: Prisma.TripImportRowWhereInput) {
   });
 }
 
-export async function confirmTripImportRow(id: string): Promise<{ tripId: string }> {
+export async function confirmTripImportRow(
+  id: string,
+  reviewedDriverId?: string | null
+): Promise<{ tripId: string }> {
   return prisma.$transaction(async (tx) => {
     const row = await tx.tripImportRow.findUnique({
       where: { id },
@@ -401,11 +415,17 @@ export async function confirmTripImportRow(id: string): Promise<{ tripId: string
     if (!row.tripDate && !row.documentDate) throw new Error('Riga incompleta: data viaggio non riconosciuta.');
     if (!row.customerCode && !row.customerName) throw new Error('Riga incompleta: committente non riconosciuto.');
 
+    const selectedDriverId = reviewedDriverId === undefined ? row.driverId : reviewedDriverId;
+    if (selectedDriverId) {
+      const selectedDriver = await tx.driver.findUnique({ where: { id: selectedDriverId }, select: { id: true } });
+      if (!selectedDriver) throw new Error('L’autista selezionato non esiste piu in anagrafica.');
+    }
+
     const tripDate = row.tripDate || row.documentDate || new Date();
     const customer = row.customerCode
-      ? await tx.containerCustomer.findUnique({ where: { code: row.customerCode } })
+      ? await tx.customer.findUnique({ where: { code: row.customerCode } })
       : row.customerName
-        ? await tx.containerCustomer.findFirst({ where: { name: { equals: row.customerName, mode: 'insensitive' } } })
+        ? await tx.customer.findFirst({ where: { name: { equals: row.customerName, mode: 'insensitive' } } })
         : null;
     const parsedStops = parsedStopsFromJson(row.parsedStops);
     const stops = parsedStops.length > 0
@@ -437,9 +457,7 @@ export async function confirmTripImportRow(id: string): Promise<{ tripId: string
         customerName: row.customerName || customer?.name || null,
         customerReference: buildCustomerReference(row),
         carrierName: row.carrierName,
-        // L'autista resta sempre una scelta manuale, anche per vecchie righe
-        // pending che potrebbero avere ancora un driverId valorizzato.
-        driverId: null,
+        driverId: selectedDriverId,
         tractorId: row.tractorId,
         trailerId: row.trailerId,
         loadingTerminalName: row.loadingTerminalName || row.loadingBaseName,
@@ -486,6 +504,7 @@ export async function confirmTripImportRow(id: string): Promise<{ tripId: string
       where: { id },
       data: {
         status: TripImportRowStatus.IMPORTED,
+        driverId: selectedDriverId,
         containerTripId: trip.id
       }
     });
@@ -494,11 +513,15 @@ export async function confirmTripImportRow(id: string): Promise<{ tripId: string
   });
 }
 
-async function confirmPendingTripImportRows(where: Prisma.TripImportRowWhereInput): Promise<number> {
+async function confirmPendingTripImportRows(
+  where: Prisma.TripImportRowWhereInput,
+  driverSelections?: ReadonlyMap<string, string | null>
+): Promise<number> {
   const rows = await getPendingRows(where);
   let confirmed = 0;
   for (const row of rows) {
-    await confirmTripImportRow(row.id);
+    const reviewedDriverId = driverSelections?.has(row.id) ? driverSelections.get(row.id) : undefined;
+    await confirmTripImportRow(row.id, reviewedDriverId);
     confirmed += 1;
   }
   return confirmed;
@@ -514,12 +537,15 @@ async function discardPendingRows(where: Prisma.TripImportRowWhereInput): Promis
   return result.count;
 }
 
-export function confirmAllPendingTripImportsForBatch(batchId: string): Promise<number> {
-  return confirmPendingTripImportRows({ batchId });
+export function confirmAllPendingTripImportsForBatch(
+  batchId: string,
+  driverSelections?: ReadonlyMap<string, string | null>
+): Promise<number> {
+  return confirmPendingTripImportRows({ batchId }, driverSelections);
 }
 
-export function confirmAllPendingTripImports(): Promise<number> {
-  return confirmPendingTripImportRows({});
+export function confirmAllPendingTripImports(driverSelections?: ReadonlyMap<string, string | null>): Promise<number> {
+  return confirmPendingTripImportRows({}, driverSelections);
 }
 
 export function discardPendingTripImportRow(id: string): Promise<number> {

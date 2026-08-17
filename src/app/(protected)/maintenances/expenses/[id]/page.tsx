@@ -6,7 +6,14 @@ import { ConfirmSubmitButton } from '@/components/ConfirmSubmitButton';
 import { PageHeader } from '@/components/PageHeader';
 import { formatDate } from '@/lib/dates';
 import { prisma } from '@/lib/db';
-import { computeLineVat, expenseDocumentInclude, formatEuroCents, formatQuantityMilli, getAllocationLabel } from '@/lib/expense';
+import {
+  computeLineVat,
+  expenseDocumentInclude,
+  formatEuroCents,
+  formatQuantityMilli,
+  getExpenseAllocationLabel,
+  getExpenseLineAllocations
+} from '@/lib/expense';
 import { deleteExpenseFromDetailAction } from '../actions';
 
 type ExpenseDetailPageProps = {
@@ -95,7 +102,9 @@ export default async function ExpenseDocumentDetailPage({ params, searchParams }
             </tr>
           </thead>
           <tbody>
-            {doc.lines.map((line) => (
+            {doc.lines.map((line) => {
+              const allocations = getExpenseLineAllocations(line);
+              return (
               <tr key={line.id}>
                 <td>{line.description}</td>
                 <td>{line.code || '-'}</td>
@@ -107,10 +116,27 @@ export default async function ExpenseDocumentDetailPage({ params, searchParams }
                 <td>{formatEuroCents(computeLineVat(line.unitPriceCents, line.vatRatePercent).totalCents)}</td>
                 <td>{formatEuroCents(line.imponibileCents)}</td>
                 <td>{formatEuroCents(line.totalCents)}</td>
-                <td>{getAllocationLabel(line)}</td>
-                <td>{line.odometerKm === null ? '-' : `${line.odometerKm.toLocaleString('it-IT')} km`}</td>
+                <td>
+                  <div className="expense-allocation-detail">
+                    {allocations.map((allocation) => (
+                      <span key={allocation.id}>
+                        {formatQuantityMilli(allocation.quantityMilli)} {line.unit} → {getExpenseAllocationLabel(allocation)}
+                      </span>
+                    ))}
+                  </div>
+                </td>
+                <td>
+                  <div className="expense-allocation-detail">
+                    {allocations.some((allocation) => allocation.odometerKm !== null)
+                      ? allocations.flatMap((allocation) => allocation.odometerKm === null ? [] : [
+                          <span key={allocation.id}>{getExpenseAllocationLabel(allocation)}: {allocation.odometerKm.toLocaleString('it-IT')} km</span>
+                        ])
+                      : '-'}
+                  </div>
+                </td>
               </tr>
-            ))}
+              );
+            })}
           </tbody>
         </table>
       </section>

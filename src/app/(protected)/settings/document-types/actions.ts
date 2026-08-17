@@ -15,6 +15,7 @@ const documentTypeSchema = z.object({
   name: z.string().min(1, 'Nome richiesto').max(120),
   suggestedEntityType: z.nativeEnum(EntityType),
   defaultNoticeDays: z.number().int().min(1).max(3650),
+  expiryRequired: z.boolean(),
   active: z.boolean()
 });
 
@@ -23,6 +24,7 @@ function parseDocumentType(formData: FormData) {
     name: formString(formData, 'name'),
     suggestedEntityType: formString(formData, 'suggestedEntityType'),
     defaultNoticeDays: Number(formData.get('defaultNoticeDays') || 30),
+    expiryRequired: formBoolean(formData, 'expiryRequired'),
     active: formBoolean(formData, 'active')
   });
 }

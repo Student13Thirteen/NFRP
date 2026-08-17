@@ -14,6 +14,7 @@ import {
   formatFireExtinguisherNotes,
   type FireExtinguisherRate
 } from '@/lib/fire-extinguisher';
+import { isTachographUpdateDocumentTypeName } from '@/lib/tachograph-update';
 
 export type ReferenceData = {
   documentTypes: DocumentType[];
@@ -201,7 +202,7 @@ const documentTypeRules: DocumentTypeRule[] = [
       'periodo di assicurazione',
       'asscurazione',
       'periodo di asscurazione',
-      'Assicurazioni Demo Unosai',
+      'unipolsai',
       'rc auto',
       'rca',
       'carta verde'
@@ -279,6 +280,19 @@ const documentTypeRules: DocumentTypeRule[] = [
     ],
     weakHints: ['trasporto merci pericolose', 'certificato di approvazione', 'merci pericolose', 'valido fino al'],
     preferredEntityTypes: [EntityType.TRACTOR, EntityType.TRAILER]
+  },
+  {
+    key: 'aggiornamento-tachigrafo-digitale',
+    names: ['aggiornamento tachigrafo digitale'],
+    strongHints: [
+      'intervento a aggiornamento tachigrafo',
+      'aggiornamento tachigrafo',
+      'aggiornamento software tachigrafo',
+      'dtco1c'
+    ],
+    weakHints: ['tachigrafo digitale', 'software tachigrafo', 'dtco'],
+    negativeHints: ['carta tachigrafica', 'verifica periodica', 'calibrazione', 'taratura'],
+    preferredEntityTypes: [EntityType.TRACTOR]
   },
   {
     key: 'revisione-cronotachigrafo',
@@ -512,6 +526,7 @@ export function analyzeInboxPdfExtraction(
   const broadEntity = findBestEntity(referenceData, source);
   const preferredEntityType = insuranceVehicleSuggestion?.entityType || broadEntity?.entityType;
   const documentTypeMatch = findDocumentType(referenceData.documentTypes, source, preferredEntityType);
+  const isTachographUpdate = isTachographUpdateDocumentTypeName(documentTypeMatch.documentType?.name);
   const typedEntity = documentTypeMatch.documentType?.suggestedEntityType
     ? findBestEntity(referenceData, source, documentTypeMatch.documentType.suggestedEntityType)
     : null;
@@ -519,7 +534,7 @@ export function analyzeInboxPdfExtraction(
     Boolean(insuranceVehicleSuggestion && isInsuranceDocumentType(documentTypeMatch.documentType)) &&
     Boolean(broadEntity && broadEntity.entityType !== insuranceVehicleSuggestion?.entityType);
   const entity = documentTypeMatch.documentType?.suggestedEntityType
-    ? typedEntity || (shouldIgnoreConflictingBroadEntity ? null : broadEntity)
+    ? typedEntity || (shouldIgnoreConflictingBroadEntity || isTachographUpdate ? null : broadEntity)
     : broadEntity;
   const dates = findInboxDateSuggestions(source, storedPdf.originalFileName);
   const barratoRosaExpiry = findBarratoRosaLibrettoExpiryOverride(
@@ -531,7 +546,9 @@ export function analyzeInboxPdfExtraction(
     !dates.expiryDate && dates.issueDate && isCronotachographInspection(documentTypeMatch.documentType)
       ? deriveCronotachographExpiryDate(dates.issueDate)
       : null;
-  const suggestedExpiryDate = barratoRosaExpiry?.expiryDate || dates.expiryDate || derivedCronotachographExpiry;
+  const suggestedExpiryDate = isTachographUpdate
+    ? null
+    : barratoRosaExpiry?.expiryDate || dates.expiryDate || derivedCronotachographExpiry;
   const expiryEvidence =
     barratoRosaExpiry?.evidence ||
     dates.expiryEvidence ||
@@ -559,7 +576,7 @@ export function analyzeInboxPdfExtraction(
       (extractionSource === 'pdf-text' ? 18 : extractionSource === 'ocr' ? 14 : 0) +
         Math.min(documentTypeMatch.score, 50) +
         (entity ? Math.min(entity.score, 35) : 0) +
-        (suggestedExpiryDate ? (barratoRosaExpiry ? 28 : derivedCronotachographExpiry ? 16 : 22) : 0) +
+        (suggestedExpiryDate ? (barratoRosaExpiry ? 28 : derivedCronotachographExpiry ? 16 : 22) : isTachographUpdate ? 16 : 0) +
         (dates.issueDate ? 8 : 0)
     )
   );
@@ -572,7 +589,9 @@ export function analyzeInboxPdfExtraction(
       ? `Targa non in anagrafica: ${insuranceVehicleSuggestion.plate}; ${insuranceVehicleSuggestion.evidence}.`
       : null,
     dates.issueEvidence ? `Evidenza emissione: ${dates.issueEvidence}` : 'Emissione non riconosciuta con evidenza sufficiente.',
-    expiryEvidence
+    isTachographUpdate
+      ? 'Questo tipo documenta l’intervento e non prevede una scadenza: il campo resta vuoto.'
+      : expiryEvidence
       ? `Evidenza scadenza: ${expiryEvidence}`
       : 'Scadenza non riconosciuta: campo lasciato vuoto per evitare date casuali.',
     dates.foundDates ? `${dates.foundDates} date candidate trovate.` : 'Nessuna data candidata trovata.',

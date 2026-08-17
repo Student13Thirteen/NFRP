@@ -258,6 +258,8 @@ export default async function TripDetailPage({ params, searchParams }: TripDetai
           <h2>Modifica viaggio</h2>
           <TripForm
             action={updateTripAction.bind(null, trip.id)}
+            recoveryKey={`trip:${trip.id}`}
+            recoverOnError={Boolean(resolvedSearchParams.error)}
             loadingBases={buildLoadingBaseOptions(loadingBases)}
             salesPoints={buildSalesPointOptions(salesPoints)}
             drivers={buildDriverOptions(drivers)}

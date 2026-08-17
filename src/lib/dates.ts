@@ -3,10 +3,15 @@ export function startOfDay(date: Date): Date {
   return new Date(Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), value.getUTCDate()));
 }
 
-export function daysUntil(date: Date, now = new Date()): number {
-  const target = startOfDay(date).getTime();
+export function daysUntil(date: Date | string | null | undefined, now = new Date()): number {
+  if (!date) return Number.POSITIVE_INFINITY;
+  const target = startOfDay(new Date(date)).getTime();
   const current = startOfDay(now).getTime();
   return Math.ceil((target - current) / (1000 * 60 * 60 * 24));
+}
+
+export function formatExpiryDate(date: Date | string | null | undefined): string {
+  return date ? formatDate(date) : 'Senza scadenza';
 }
 
 export function formatDate(date: Date | string | null | undefined): string {

@@ -11,6 +11,6 @@ export function buildSupplierMapsHref(supplier: SupplierAddressFields): string |
   return buildMapsHref(supplier);
 }
 
-export function formatSupplierContacts(supplier: Pick<Supplier, 'phone' | 'email'>): string {
-  return [supplier.phone, supplier.email].filter(Boolean).join(' - ') || '-';
+export function formatSupplierContacts(supplier: Pick<Supplier, 'phone' | 'email' | 'pecEmail'>): string {
+  return [supplier.phone, supplier.email, supplier.pecEmail ? `PEC ${supplier.pecEmail}` : null].filter(Boolean).join(' - ') || '-';
 }

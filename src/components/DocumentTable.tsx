@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { Download } from 'lucide-react';
-import { daysUntil, formatDate } from '@/lib/dates';
+import { daysUntil, formatExpiryDate } from '@/lib/dates';
 import { type DocumentWithRelations, getEntityLabel } from '@/lib/documents';
 import { StatusBadge } from '@/components/StatusBadge';
 
@@ -51,8 +51,8 @@ export function DocumentTable({ documents, emptyText = 'Nessun documento trovato
                 </td>
                 <td className="click-cell">
                   <Link className="table-cell-link" href={documentHref} prefetch={false}>
-                    {formatDate(document.expiryDate)}
-                    <div className="muted">{daysUntil(document.expiryDate)} giorni</div>
+                    {formatExpiryDate(document.expiryDate)}
+                    {document.expiryDate ? <div className="muted">{daysUntil(document.expiryDate)} giorni</div> : null}
                   </Link>
                 </td>
                 <td className="click-cell">

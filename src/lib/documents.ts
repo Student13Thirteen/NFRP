@@ -1,5 +1,5 @@
 import { DocumentStatus, EntityType, type Document, type DocumentType, type Driver, type OtherEntity, type Tractor, type Trailer } from '@prisma/client';
-import { daysUntil, formatDate } from '@/lib/dates';
+import { daysUntil, formatDate, formatExpiryDate } from '@/lib/dates';
 
 export type DocumentWithRelations = Document & {
   documentType: DocumentType;
@@ -178,8 +178,8 @@ export function documentMatchesSearch(document: DocumentWithRelations, query?: s
       getStatusLabel(status),
       getStatusLabel(document.status),
       formatDate(document.issueDate),
-      formatDate(document.expiryDate),
-      `${daysUntil(document.expiryDate)} giorni`
+      formatExpiryDate(document.expiryDate),
+      document.expiryDate ? `${daysUntil(document.expiryDate)} giorni` : 'senza scadenza'
     ].join(' ')
   );
 

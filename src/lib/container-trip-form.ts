@@ -19,6 +19,7 @@ const containerTripSchema = z.object({
   billingStatus: z.nativeEnum(TripBillingStatus),
   waybillNumber: z.string().max(80).nullable(),
   waybillDate: z.date().nullable(),
+  customerId: z.string().nullable(),
   customerCode: z.string().max(40).nullable(),
   customerName: z.string().max(180).nullable(),
   customerReference: z.string().max(180).nullable(),
@@ -142,11 +143,13 @@ function parseStops(formData: FormData) {
 }
 
 async function assertReferences(input: z.infer<typeof containerTripSchema>) {
-  const [driver, tractor, trailer] = await Promise.all([
+  const [customer, driver, tractor, trailer] = await Promise.all([
+    input.customerId ? prisma.customer.findUnique({ where: { id: input.customerId } }) : null,
     input.driverId ? prisma.driver.findUnique({ where: { id: input.driverId } }) : null,
     input.tractorId ? prisma.tractor.findUnique({ where: { id: input.tractorId } }) : null,
     input.trailerId ? prisma.trailer.findUnique({ where: { id: input.trailerId } }) : null
   ]);
+  if (input.customerId && !customer) throw new Error('Cliente non valido.');
   if (input.driverId && !driver) throw new Error('Autista non valido.');
   if (input.tractorId && !tractor) throw new Error('Trattore non valido.');
   if (input.trailerId && !trailer) throw new Error('Semirimorchio non valido.');
@@ -159,6 +162,7 @@ export async function parseContainerTripForm(formData: FormData) {
     billingStatus: formString(formData, 'billingStatus') || TripBillingStatus.NOT_READY,
     waybillNumber: optionalFormString(formData, 'waybillNumber'),
     waybillDate: parseOptionalDate(formData, 'waybillDate', 'Data lettera di vettura'),
+    customerId: optionalFormString(formData, 'customerId'),
     customerCode: optionalFormString(formData, 'customerCode'),
     customerName: optionalFormString(formData, 'customerName'),
     customerReference: optionalFormString(formData, 'customerReference'),
@@ -188,7 +192,9 @@ export async function parseContainerTripForm(formData: FormData) {
     stops: parseStops(formData)
   });
 
-  if (!parsed.customerCode && !parsed.customerName) throw new Error('Inserisci almeno codice o nome del committente.');
+  if (!parsed.customerId && !parsed.customerCode && !parsed.customerName) {
+    throw new Error('Seleziona un cliente oppure inserisci almeno codice o nome del committente.');
+  }
   if (parsed.odometerStartKm !== null && parsed.odometerEndKm !== null) {
     if (parsed.odometerEndKm < parsed.odometerStartKm) throw new Error('Il contachilometri finale non puo essere inferiore a quello iniziale.');
     parsed.actualKm = parsed.odometerEndKm - parsed.odometerStartKm;
@@ -199,24 +205,37 @@ export async function parseContainerTripForm(formData: FormData) {
 }
 
 async function ensureCustomer(input: z.infer<typeof containerTripSchema>) {
+  if (input.customerId) {
+    const selected = await prisma.customer.findUnique({ where: { id: input.customerId } });
+    if (!selected) throw new Error('Cliente non valido.');
+    return selected;
+  }
   if (input.customerCode) {
-    return prisma.containerCustomer.upsert({
+    return prisma.customer.upsert({
       where: { code: input.customerCode },
       create: { code: input.customerCode, name: input.customerName || `Committente ${input.customerCode}` },
       update: input.customerName ? { name: input.customerName } : {}
     });
   }
   if (!input.customerName) return null;
-  const existing = await prisma.containerCustomer.findFirst({
+  const existing = await prisma.customer.findFirst({
     where: { name: { equals: input.customerName, mode: 'insensitive' } }
   });
-  return existing || prisma.containerCustomer.create({ data: { name: input.customerName } });
+  return existing || prisma.customer.create({ data: { name: input.customerName } });
 }
 
-function baseWriteData(input: z.infer<typeof containerTripSchema>, customerId: string | null) {
+function baseWriteData(
+  input: z.infer<typeof containerTripSchema>,
+  customer: { id: string; code: string | null; name: string } | null
+) {
   const { containers, stops, ...data } = input;
   return {
-    data: { ...data, customerId },
+    data: {
+      ...data,
+      customerId: customer?.id || null,
+      customerCode: customer?.code || input.customerCode,
+      customerName: customer?.name || input.customerName
+    },
     containers,
     stops
   };
@@ -225,7 +244,7 @@ function baseWriteData(input: z.infer<typeof containerTripSchema>, customerId: s
 export async function createContainerTripFromForm(formData: FormData) {
   const parsed = await parseContainerTripForm(formData);
   const customer = await ensureCustomer(parsed);
-  const write = baseWriteData(parsed, customer?.id || null);
+  const write = baseWriteData(parsed, customer);
   return prisma.containerTrip.create({
     data: {
       ...write.data,
@@ -253,7 +272,7 @@ export async function updateContainerTripFromForm(id: string, formData: FormData
     }
   }
   const customer = await ensureCustomer(parsed);
-  const write = baseWriteData(parsed, customer?.id || null);
+  const write = baseWriteData(parsed, customer);
   return prisma.$transaction(async (tx) => {
     await tx.containerTripContainer.deleteMany({ where: { containerTripId: id } });
     await tx.containerTripStop.deleteMany({ where: { containerTripId: id } });

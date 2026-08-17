@@ -26,12 +26,16 @@ type NewMaintenancePageProps = {
 export default async function NewMaintenancePage({ searchParams }: NewMaintenancePageProps) {
   await requireUser();
   const resolvedSearchParams = await searchParams;
-  const [categories, suppliers, drivers, tractors, trailers] = await Promise.all([
+  const [categories, suppliers, drivers, tractors, trailers, driverAssignments] = await Promise.all([
     prisma.category.findMany({ where: { active: true }, orderBy: { name: 'asc' } }),
     prisma.supplier.findMany({ where: { active: true }, orderBy: { name: 'asc' } }),
     prisma.driver.findMany({ where: { active: true }, orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }] }),
     prisma.tractor.findMany({ where: { active: true }, orderBy: { plate: 'asc' } }),
-    prisma.trailer.findMany({ where: { active: true }, orderBy: { plate: 'asc' } })
+    prisma.trailer.findMany({ where: { active: true }, orderBy: { plate: 'asc' } }),
+    prisma.tractorDriverAssignment.findMany({
+      include: { driver: { select: { firstName: true, lastName: true } } },
+      orderBy: { validFrom: 'desc' }
+    })
   ]);
   const missingRegistry = categories.length === 0;
   const vehicleOptions = buildMaintenanceVehicleOptions(tractors, trailers);
@@ -88,10 +92,17 @@ export default async function NewMaintenancePage({ searchParams }: NewMaintenanc
         </div>
         <MaintenanceForm
           action="/api/maintenances/create"
+          recoveryKey="maintenance:new"
+          recoverOnError={Boolean(resolvedSearchParams.error)}
           categories={buildMaintenanceCategoryOptions(categories)}
           suppliers={buildMaintenanceSupplierOptions(suppliers)}
           drivers={buildMaintenanceDriverOptions(drivers)}
           vehicles={vehicleOptions}
+          driverAssignments={driverAssignments.map((assignment) => ({
+            ...assignment,
+            validFrom: toDateInputValue(assignment.validFrom),
+            validTo: assignment.validTo ? toDateInputValue(assignment.validTo) : null
+          }))}
           defaultValues={{
             maintenanceDate: toDateInputValue(new Date()),
             status: MaintenanceStatus.COMPLETED,

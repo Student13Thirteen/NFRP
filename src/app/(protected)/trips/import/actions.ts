@@ -5,6 +5,7 @@ import { requireUser } from '@/lib/auth';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { setFlashMessage } from '@/lib/flash';
+import { TRIP_IMPORT_DRIVER_FIELD_PREFIX } from '@/lib/driver-name-match';
 import {
   confirmAllPendingTripImports,
   confirmAllPendingTripImportsForBatch,
@@ -16,6 +17,17 @@ import {
 
 const REVIEW_PATH = '/trips/import/review';
 
+function getDriverSelections(formData: FormData): Map<string, string | null> {
+  const selections = new Map<string, string | null>();
+  for (const [fieldName, value] of formData.entries()) {
+    if (!fieldName.startsWith(TRIP_IMPORT_DRIVER_FIELD_PREFIX) || typeof value !== 'string') continue;
+    const rowId = fieldName.slice(TRIP_IMPORT_DRIVER_FIELD_PREFIX.length).trim();
+    if (!rowId) continue;
+    selections.set(rowId, value.trim() || null);
+  }
+  return selections;
+}
+
 function revalidateTripImportPaths() {
   revalidatePath(REVIEW_PATH);
   revalidatePath('/trips');
@@ -23,16 +35,18 @@ function revalidateTripImportPaths() {
   revalidatePath('/costs');
 }
 
-export async function confirmTripImportRowAction(id: string) {
+export async function confirmTripImportRowAction(id: string, formData: FormData) {
   await requireUser();
-  await confirmTripImportRow(id);
+  const selections = getDriverSelections(formData);
+  await confirmTripImportRow(id, selections.has(id) ? selections.get(id) : undefined);
   revalidateTripImportPaths();
   redirect(REVIEW_PATH);
 }
 
-export async function confirmAndCompleteTripImportRowAction(id: string) {
+export async function confirmAndCompleteTripImportRowAction(id: string, formData: FormData) {
   await requireUser();
-  const { tripId } = await confirmTripImportRow(id);
+  const selections = getDriverSelections(formData);
+  const { tripId } = await confirmTripImportRow(id, selections.has(id) ? selections.get(id) : undefined);
   revalidateTripImportPaths();
   await setFlashMessage({
     type: 'success',
@@ -49,9 +63,9 @@ export async function discardTripImportRowAction(id: string) {
   redirect(REVIEW_PATH);
 }
 
-export async function confirmTripImportBatchAction(batchId: string) {
+export async function confirmTripImportBatchAction(batchId: string, formData: FormData) {
   await requireUser();
-  const confirmed = await confirmAllPendingTripImportsForBatch(batchId);
+  const confirmed = await confirmAllPendingTripImportsForBatch(batchId, getDriverSelections(formData));
   revalidateTripImportPaths();
   await setFlashMessage({
     type: 'success',
@@ -73,9 +87,9 @@ export async function discardTripImportBatchAction(batchId: string) {
   redirect(REVIEW_PATH);
 }
 
-export async function confirmAllTripImportsAction() {
+export async function confirmAllTripImportsAction(formData: FormData) {
   await requireUser();
-  const confirmed = await confirmAllPendingTripImports();
+  const confirmed = await confirmAllPendingTripImports(getDriverSelections(formData));
   revalidateTripImportPaths();
   await setFlashMessage({
     type: 'success',

@@ -1,8 +1,11 @@
 'use client';
 
-import { useRef } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { Save } from 'lucide-react';
 import { DatePartsInput } from '@/components/DatePartsInput';
+import { DriverAssignmentField } from '@/components/DriverAssignmentField';
+import { RecoverableForm } from '@/components/RecoverableForm';
+import type { DatedDriverAssignment } from '@/lib/driver-assignment-core';
 
 type TractorOption = {
   id: string;
@@ -10,10 +13,6 @@ type TractorOption = {
   brand: string | null;
   model: string | null;
   active: boolean;
-  assignedDriver?: {
-    firstName: string;
-    lastName: string;
-  } | null;
 };
 
 type DriverOption = {
@@ -69,12 +68,16 @@ export type FuelEntryFormDefaults = {
 
 type FuelEntryFormProps = {
   action: string;
+  submissionKey?: string;
   tractors: TractorOption[];
   drivers: DriverOption[];
   suppliers: SupplierOption[];
   cards: CardOption[];
   products: ProductOption[];
+  driverAssignments: DatedDriverAssignment[];
   defaultValues: FuelEntryFormDefaults;
+  recoverOnError?: boolean;
+  recoveryKey?: string;
   submitLabel: string;
 };
 
@@ -117,14 +120,21 @@ function formatDecimal(value: number, decimals: number): string {
 
 export function FuelEntryForm({
   action,
+  submissionKey,
   tractors,
   drivers,
   suppliers,
   cards,
   products,
+  driverAssignments,
   defaultValues,
+  recoverOnError = false,
+  recoveryKey = 'fuel-entry',
   submitLabel
 }: FuelEntryFormProps) {
+  const [fuelDate, setFuelDate] = useState(defaultValues.fuelDate);
+  const [tractorId, setTractorId] = useState(defaultValues.tractorId || '');
+  const handleDateChange = useCallback((value: string) => setFuelDate(value), []);
   const litersRef = useRef<HTMLInputElement>(null);
   const priceRef = useRef<HTMLInputElement>(null);
   const totalRef = useRef<HTMLInputElement>(null);
@@ -153,17 +163,17 @@ export function FuelEntryForm({
   }
 
   return (
-    <form action={action} method="post" className="form-stack">
+    <RecoverableForm action={action} method="post" className="form-stack" recoveryKey={recoveryKey} recoverOnError={recoverOnError}>
+      {submissionKey ? <input name="submissionKey" type="hidden" defaultValue={submissionKey} /> : null}
       <div className="form-grid">
-        <DatePartsInput label="Data" name="fuelDate" defaultValue={defaultValues.fuelDate} required />
+        <DatePartsInput label="Data" name="fuelDate" defaultValue={defaultValues.fuelDate} required onValueChange={handleDateChange} />
         <label>
           Targa trattore
-          <select name="tractorId" defaultValue={defaultValues.tractorId || ''} required>
+          <select name="tractorId" value={tractorId} onChange={(event) => setTractorId(event.target.value)} required>
             <option value="">Seleziona</option>
             {tractors.map((tractor) => (
               <option key={tractor.id} value={tractor.id}>
                 {tractorOptionLabel(tractor)}
-                {tractor.assignedDriver ? ` - ${driverOptionLabel(tractor.assignedDriver)}` : ''}
                 {tractor.active ? '' : ' (non attivo)'}
               </option>
             ))}
@@ -187,6 +197,14 @@ export function FuelEntryForm({
           <input name="odometerKm" inputMode="numeric" defaultValue={defaultValues.odometerKm || ''} />
         </label>
       </div>
+
+      <DriverAssignmentField
+        assignments={driverAssignments}
+        drivers={drivers.map((driver) => ({ id: driver.id, label: driverOptionLabel(driver), active: driver.active }))}
+        tractorId={tractorId}
+        date={fuelDate}
+        defaultDriverId={defaultValues.driverId}
+      />
 
       <div className="form-grid form-grid-amounts">
         <label>
@@ -233,18 +251,6 @@ export function FuelEntryForm({
           <label>
             Ora
             <input name="fuelTime" type="time" defaultValue={defaultValues.fuelTime || ''} />
-          </label>
-          <label>
-            Autista
-            <select name="driverId" defaultValue={defaultValues.driverId || ''}>
-              <option value="">Automatico dal trattore</option>
-              {drivers.map((driver) => (
-                <option key={driver.id} value={driver.id}>
-                  {driverOptionLabel(driver)}
-                  {driver.active ? '' : ' (non attivo)'}
-                </option>
-              ))}
-            </select>
           </label>
           <label>
             Distributore
@@ -304,6 +310,6 @@ export function FuelEntryForm({
         <Save size={16} aria-hidden />
         {submitLabel}
       </button>
-    </form>
+    </RecoverableForm>
   );
 }

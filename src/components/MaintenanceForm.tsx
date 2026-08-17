@@ -1,7 +1,14 @@
+'use client';
+
 import { MaintenanceStatus } from '@prisma/client';
+import { useCallback, useMemo, useState } from 'react';
 import { Save } from 'lucide-react';
 import { DatePartsInput } from '@/components/DatePartsInput';
+import { DriverAssignmentField } from '@/components/DriverAssignmentField';
 import { FileUpload } from '@/components/FileUpload';
+import { QuickSupplierField } from '@/components/QuickSupplierField';
+import { RecoverableForm } from '@/components/RecoverableForm';
+import type { DatedDriverAssignment } from '@/lib/driver-assignment-core';
 import {
   getMaintenanceStatusLabel,
   type MaintenanceSelectOption,
@@ -30,11 +37,14 @@ type MaintenanceFormProps = {
   suppliers: MaintenanceSelectOption[];
   drivers: MaintenanceSelectOption[];
   vehicles: MaintenanceVehicleOption[];
+  driverAssignments: DatedDriverAssignment[];
   defaultValues?: MaintenanceFormValues;
   submitLabel: string;
   showStatus?: boolean;
   fileLabel?: string;
   disabled?: boolean;
+  recoverOnError?: boolean;
+  recoveryKey?: string;
 };
 
 function renderOptions(options: Array<MaintenanceSelectOption | MaintenanceVehicleOption>, valueKey: 'id' | 'value' = 'id') {
@@ -52,20 +62,44 @@ export function MaintenanceForm({
   suppliers,
   drivers,
   vehicles,
+  driverAssignments,
   defaultValues,
   submitLabel,
   showStatus = false,
   fileLabel = 'PDF manutenzione opzionale',
-  disabled = false
+  disabled = false,
+  recoverOnError = false,
+  recoveryKey = 'maintenance'
 }: MaintenanceFormProps) {
+  const [maintenanceDate, setMaintenanceDate] = useState(defaultValues?.maintenanceDate || '');
+  const [vehicleKey, setVehicleKey] = useState(defaultValues?.vehicleKey || '');
+  const handleDateChange = useCallback((value: string) => setMaintenanceDate(value), []);
+  const tractorId = useMemo(
+    () => vehicleKey.startsWith('TRACTOR:') ? vehicleKey.slice('TRACTOR:'.length) : null,
+    [vehicleKey]
+  );
+
   return (
-    <form action={action} method={typeof action === 'string' ? 'post' : undefined} className="form-stack" encType="multipart/form-data">
+    <RecoverableForm
+      action={action}
+      method={typeof action === 'string' ? 'post' : undefined}
+      className="form-stack"
+      encType="multipart/form-data"
+      recoveryKey={recoveryKey}
+      recoverOnError={recoverOnError}
+    >
       <div className="form-section-title">Intervento</div>
       <div className="form-grid">
-        <DatePartsInput label="Data intervento" name="maintenanceDate" defaultValue={defaultValues?.maintenanceDate} required />
+        <DatePartsInput
+          label="Data intervento"
+          name="maintenanceDate"
+          defaultValue={defaultValues?.maintenanceDate}
+          required
+          onValueChange={handleDateChange}
+        />
         <label>
           Mezzo
-          <select name="vehicleKey" defaultValue={defaultValues?.vehicleKey || ''} disabled={disabled}>
+          <select name="vehicleKey" value={vehicleKey} onChange={(event) => setVehicleKey(event.target.value)} disabled={disabled}>
             <option value="">Non associata</option>
             {renderOptions(vehicles, 'value')}
           </select>
@@ -77,23 +111,18 @@ export function MaintenanceForm({
             {renderOptions(categories)}
           </select>
         </label>
-        <label>
-          Fornitore / officina
-          <select name="supplierId" defaultValue={defaultValues?.supplierId || ''} disabled={disabled}>
-            <option value="">Non indicato</option>
-            {renderOptions(suppliers)}
-          </select>
-        </label>
+        <QuickSupplierField options={suppliers} defaultValue={defaultValues?.supplierId} disabled={disabled} />
       </div>
 
       <div className="form-grid">
-        <label>
-          Autista
-          <select name="driverId" defaultValue={defaultValues?.driverId || ''} disabled={disabled}>
-            <option value="">Non associato</option>
-            {renderOptions(drivers)}
-          </select>
-        </label>
+        <DriverAssignmentField
+          assignments={driverAssignments}
+          drivers={drivers}
+          tractorId={tractorId}
+          date={maintenanceDate}
+          defaultDriverId={defaultValues?.driverId}
+          disabled={disabled}
+        />
       </div>
 
       <label>
@@ -157,6 +186,6 @@ export function MaintenanceForm({
         <Save size={16} aria-hidden />
         {submitLabel}
       </button>
-    </form>
+    </RecoverableForm>
   );
 }

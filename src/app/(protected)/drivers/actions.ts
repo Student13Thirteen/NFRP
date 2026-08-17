@@ -8,6 +8,12 @@ import { z } from 'zod';
 import { prisma } from '@/lib/db';
 import { setFlashMessage } from '@/lib/flash';
 import { formBoolean, formString, optionalFormString } from '@/lib/form';
+import {
+  createDriverEmploymentPeriod,
+  deleteDriverEmploymentPeriod,
+  parseDriverEmploymentInput,
+  updateDriverEmploymentPeriod
+} from '@/lib/driver-employment';
 
 const driverSchema = z.object({
   firstName: z.string().min(1, 'Nome richiesto').max(80),
@@ -28,6 +34,11 @@ function parseDriver(formData: FormData) {
     notes: optionalFormString(formData, 'notes'),
     active: formBoolean(formData, 'active')
   });
+}
+
+function employmentErrorRedirect(driverId: string, error: unknown): never {
+  const message = error instanceof Error && error.message ? error.message.slice(0, 260) : 'Salvataggio del rapporto di lavoro non riuscito.';
+  redirect(`/drivers/${driverId}?employmentError=${encodeURIComponent(message)}#employment`);
 }
 
 export async function createDriverAction(formData: FormData) {
@@ -65,4 +76,55 @@ export async function deleteDriverAction(id: string) {
     message: "L'anagrafica e stata rimossa."
   });
   redirect('/drivers');
+}
+
+export async function createDriverEmploymentAction(driverId: string, formData: FormData) {
+  await requireUser();
+  try {
+    await createDriverEmploymentPeriod(parseDriverEmploymentInput(driverId, formData));
+  } catch (error) {
+    employmentErrorRedirect(driverId, error);
+  }
+  revalidatePath('/drivers');
+  revalidatePath(`/drivers/${driverId}`);
+  await setFlashMessage({
+    type: 'success',
+    title: 'Assunzione registrata',
+    message: 'Il periodo di lavoro e stato aggiunto allo storico dell’autista.'
+  });
+  redirect(`/drivers/${driverId}#employment`);
+}
+
+export async function updateDriverEmploymentAction(driverId: string, periodId: string, formData: FormData) {
+  await requireUser();
+  try {
+    await updateDriverEmploymentPeriod(periodId, parseDriverEmploymentInput(driverId, formData));
+  } catch (error) {
+    employmentErrorRedirect(driverId, error);
+  }
+  revalidatePath('/drivers');
+  revalidatePath(`/drivers/${driverId}`);
+  await setFlashMessage({
+    type: 'success',
+    title: 'Rapporto di lavoro aggiornato',
+    message: 'Periodo e causale di cessazione sono stati salvati.'
+  });
+  redirect(`/drivers/${driverId}#employment`);
+}
+
+export async function deleteDriverEmploymentAction(driverId: string, periodId: string) {
+  await requireUser();
+  try {
+    await deleteDriverEmploymentPeriod(periodId, driverId);
+  } catch (error) {
+    employmentErrorRedirect(driverId, error);
+  }
+  revalidatePath('/drivers');
+  revalidatePath(`/drivers/${driverId}`);
+  await setFlashMessage({
+    type: 'success',
+    title: 'Periodo eliminato',
+    message: 'Il periodo e stato rimosso dallo storico del rapporto di lavoro.'
+  });
+  redirect(`/drivers/${driverId}#employment`);
 }

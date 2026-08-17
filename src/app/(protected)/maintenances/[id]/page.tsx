@@ -49,12 +49,16 @@ export default async function MaintenanceDetailPage({ params, searchParams }: Ma
   });
   if (!maintenance) notFound();
 
-  const [categories, suppliers, drivers, tractors, trailers] = await Promise.all([
+  const [categories, suppliers, drivers, tractors, trailers, driverAssignments] = await Promise.all([
     prisma.category.findMany({ orderBy: [{ active: 'desc' }, { name: 'asc' }] }),
     prisma.supplier.findMany({ orderBy: [{ active: 'desc' }, { name: 'asc' }] }),
     prisma.driver.findMany({ orderBy: [{ active: 'desc' }, { lastName: 'asc' }, { firstName: 'asc' }] }),
     prisma.tractor.findMany({ orderBy: [{ active: 'desc' }, { plate: 'asc' }] }),
-    prisma.trailer.findMany({ orderBy: [{ active: 'desc' }, { plate: 'asc' }] })
+    prisma.trailer.findMany({ orderBy: [{ active: 'desc' }, { plate: 'asc' }] }),
+    prisma.tractorDriverAssignment.findMany({
+      include: { driver: { select: { firstName: true, lastName: true } } },
+      orderBy: { validFrom: 'desc' }
+    })
   ]);
   const newMaintenanceParams = new URLSearchParams({ categoryId: maintenance.categoryId });
   if (maintenance.supplierId) newMaintenanceParams.set('supplierId', maintenance.supplierId);
@@ -161,10 +165,17 @@ export default async function MaintenanceDetailPage({ params, searchParams }: Ma
           <h2>Modifica manutenzione</h2>
           <MaintenanceForm
             action={`/api/maintenances/${maintenance.id}/update`}
+            recoveryKey={`maintenance:${maintenance.id}`}
+            recoverOnError={Boolean(resolvedSearchParams.error)}
             categories={buildMaintenanceCategoryOptions(categories)}
             suppliers={buildMaintenanceSupplierOptions(suppliers)}
             drivers={buildMaintenanceDriverOptions(drivers)}
             vehicles={buildMaintenanceVehicleOptions(tractors, trailers)}
+            driverAssignments={driverAssignments.map((assignment) => ({
+              ...assignment,
+              validFrom: toDateInputValue(assignment.validFrom),
+              validTo: assignment.validTo ? toDateInputValue(assignment.validTo) : null
+            }))}
             defaultValues={{
               title: maintenance.title,
               categoryId: maintenance.categoryId,

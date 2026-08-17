@@ -16,6 +16,16 @@ export const tollCardInclude = Prisma.validator<Prisma.TollCardInclude>()({
 export type TollEntryWithRelations = Prisma.TollEntryGetPayload<{ include: typeof tollEntryInclude }>;
 export type TollCardWithRelations = Prisma.TollCardGetPayload<{ include: typeof tollCardInclude }>;
 
+export const REPORTABLE_TOLL_ENTRY_STATUSES: TollEntryStatus[] = [
+  TollEntryStatus.OK,
+  TollEntryStatus.NEEDS_REVIEW,
+  TollEntryStatus.VERIFIED
+];
+
+export function isReportableTollEntryStatus(status: TollEntryStatus): boolean {
+  return REPORTABLE_TOLL_ENTRY_STATUSES.includes(status);
+}
+
 export function getTollEntryStatusLabel(status: TollEntryStatus): string {
   switch (status) {
     case TollEntryStatus.PENDING:
@@ -26,6 +36,8 @@ export function getTollEntryStatusLabel(status: TollEntryStatus): string {
       return 'Da verificare';
     case TollEntryStatus.VERIFIED:
       return 'Verificato';
+    case TollEntryStatus.DISCARDED:
+      return 'Scartato';
     default:
       return status;
   }

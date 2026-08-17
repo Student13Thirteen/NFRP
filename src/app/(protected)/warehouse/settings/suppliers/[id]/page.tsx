@@ -4,6 +4,7 @@ import { notFound } from 'next/navigation';
 import { ArrowLeft, MapPin, Save, Trash2 } from 'lucide-react';
 import { ConfirmSubmitButton } from '@/components/ConfirmSubmitButton';
 import { PageHeader } from '@/components/PageHeader';
+import { RegistryFiscalFields } from '@/components/RegistryFiscalFields';
 import { prisma } from '@/lib/db';
 import { buildSupplierMapsHref } from '@/lib/suppliers';
 import { deleteWarehouseSupplierAction, updateWarehouseSupplierAction } from '../../../actions';
@@ -62,6 +63,7 @@ export default async function WarehouseSupplierDetailPage({ params, searchParams
               Email
               <input name="email" type="email" defaultValue={supplier.email || ''} />
             </label>
+            <RegistryFiscalFields defaultValues={supplier} />
             <label>
               Via / indirizzo
               <input name="address" defaultValue={supplier.address || ''} />

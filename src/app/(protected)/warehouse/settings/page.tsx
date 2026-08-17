@@ -2,6 +2,7 @@ import { requireUser } from '@/lib/auth';
 import Link from 'next/link';
 import { ArrowLeft, Plus } from 'lucide-react';
 import { PageHeader } from '@/components/PageHeader';
+import { RegistryFiscalFields } from '@/components/RegistryFiscalFields';
 import { prisma } from '@/lib/db';
 import { formatSupplierAddress, formatSupplierContacts } from '@/lib/suppliers';
 import { createWarehouseCategoryAction, createWarehouseSupplierAction } from '../actions';
@@ -28,7 +29,7 @@ export default async function WarehouseSettingsPage({ searchParams }: WarehouseS
     <>
       <PageHeader
         title="Anagrafiche magazzino"
-        description="Categorie e fornitori dedicati ai record di magazzino."
+        description="Registro unico condiviso con Manutenzioni: ogni categoria o fornitore creato qui è disponibile anche nei relativi form di manutenzione."
         action={
           <Link className="secondary-button" href="/warehouse">
             <ArrowLeft size={16} aria-hidden />
@@ -96,7 +97,7 @@ export default async function WarehouseSettingsPage({ searchParams }: WarehouseS
         </section>
 
         <section className="panel">
-          <h2>Nuovo fornitore</h2>
+          <h2>Aggiungi fornitore</h2>
           <form action={createWarehouseSupplierAction} className="form-stack">
             <div className="form-grid">
               <label>
@@ -111,34 +112,40 @@ export default async function WarehouseSettingsPage({ searchParams }: WarehouseS
                 Email
                 <input name="email" type="email" />
               </label>
-              <label>
-                Via / indirizzo
-                <input name="address" />
-              </label>
-              <label>
-                CAP
-                <input name="postalCode" />
-              </label>
-              <label>
-                Citta
-                <input name="city" />
-              </label>
-              <label>
-                Provincia
-                <input name="province" />
-              </label>
-              <label>
-                Nazione
-                <input name="country" />
-              </label>
             </div>
-            <label>
-              Note
-              <textarea name="notes" rows={3} />
-            </label>
+            <details className="registry-optional-fields">
+              <summary>Dati fiscali, indirizzo e note (facoltativi)</summary>
+              <div className="form-grid">
+                <RegistryFiscalFields />
+                <label>
+                  Via / indirizzo
+                  <input name="address" />
+                </label>
+                <label>
+                  CAP
+                  <input name="postalCode" />
+                </label>
+                <label>
+                  Citta
+                  <input name="city" />
+                </label>
+                <label>
+                  Provincia
+                  <input name="province" />
+                </label>
+                <label>
+                  Nazione
+                  <input name="country" />
+                </label>
+                <label>
+                  Note
+                  <textarea name="notes" rows={3} />
+                </label>
+              </div>
+            </details>
             <button className="primary-button" type="submit">
               <Plus size={16} aria-hidden />
-              Salva fornitore
+              Crea fornitore
             </button>
           </form>
 

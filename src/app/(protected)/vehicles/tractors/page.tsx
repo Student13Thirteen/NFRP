@@ -1,31 +1,60 @@
 import { requireUser } from '@/lib/auth';
 import { VehicleLifecycleStatus } from '@prisma/client';
 import Link from 'next/link';
-import { Archive, FileText, Plus, Truck } from 'lucide-react';
+import { Archive, CheckCircle2, CircleAlert, FileText, Plus, Truck } from 'lucide-react';
 import { PageHeader } from '@/components/PageHeader';
-import { formatDate } from '@/lib/dates';
+import { DatePartsInput } from '@/components/DatePartsInput';
+import { formatDate, startOfDay, toDateInputValue } from '@/lib/dates';
 import { prisma } from '@/lib/db';
 import { getVehicleLifecycleBadgeClass, getVehicleLifecycleLabel } from '@/lib/vehicle-lifecycle';
 import { createTractorAction } from './actions';
+import { activeTachographUpdateDocumentWhere } from '@/lib/tachograph-update';
 
 type TractorsPageProps = {
-  searchParams: Promise<{ view?: string }>;
+  searchParams: Promise<{ view?: string; tachograph?: string; error?: string }>;
 };
 
 export default async function TractorsPage({ searchParams }: TractorsPageProps) {
   await requireUser();
   const resolvedSearchParams = await searchParams;
   const inactiveView = resolvedSearchParams.view === 'inactive';
-  const [tractors, drivers] = await Promise.all([
+  const today = startOfDay(new Date());
+  const [allTractors, drivers] = await Promise.all([
     prisma.tractor.findMany({
       where: inactiveView
         ? { lifecycleStatus: { not: VehicleLifecycleStatus.ACTIVE } }
         : { lifecycleStatus: VehicleLifecycleStatus.ACTIVE },
       orderBy: [{ lifecycleEndedAt: 'desc' }, { plate: 'asc' }],
-      include: { assignedDriver: true, _count: { select: { documents: true } } }
+      include: {
+        driverAssignments: {
+          where: {
+            validFrom: { lte: today },
+            OR: [{ validTo: null }, { validTo: { gte: today } }]
+          },
+          include: { driver: true },
+          orderBy: { validFrom: 'desc' },
+          take: 1
+        },
+        documents: {
+          where: activeTachographUpdateDocumentWhere,
+          select: { id: true, issueDate: true, filePath: true },
+          orderBy: [{ issueDate: 'desc' }, { createdAt: 'desc' }]
+        },
+        _count: { select: { documents: true } }
+      }
     }),
     prisma.driver.findMany({ where: { active: true }, orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }] })
   ]);
+  const tachographFilter = ['documented', 'missing'].includes(resolvedSearchParams.tachograph || '')
+    ? resolvedSearchParams.tachograph
+    : undefined;
+  const documentedCount = allTractors.filter((tractor) => tractor.documents.length > 0).length;
+  const missingCount = allTractors.length - documentedCount;
+  const tractors = allTractors.filter((tractor) => {
+    if (tachographFilter === 'documented') return tractor.documents.length > 0;
+    if (tachographFilter === 'missing') return tractor.documents.length === 0;
+    return true;
+  });
 
   return (
     <>
@@ -42,6 +71,29 @@ export default async function TractorsPage({ searchParams }: TractorsPageProps) 
           </div>
         }
       />
+      {!inactiveView ? (
+        <nav className="filter-bar" aria-label="Filtro documentazione aggiornamento tachigrafo">
+          <span className="filter-count">Aggiornamento tachigrafo</span>
+          <Link className={tachographFilter ? 'secondary-button' : 'primary-button'} href="/vehicles/tractors">
+            Tutti ({allTractors.length})
+          </Link>
+          <Link
+            className={tachographFilter === 'documented' ? 'primary-button' : 'secondary-button'}
+            href="/vehicles/tractors?tachograph=documented"
+          >
+            <CheckCircle2 size={16} aria-hidden />
+            Documentati ({documentedCount})
+          </Link>
+          <Link
+            className={tachographFilter === 'missing' ? 'primary-button' : 'secondary-button'}
+            href="/vehicles/tractors?tachograph=missing"
+          >
+            <CircleAlert size={16} aria-hidden />
+            Da documentare ({missingCount})
+          </Link>
+        </nav>
+      ) : null}
+      {resolvedSearchParams.error ? <p className="form-error" style={{ marginBottom: 16 }}>{resolvedSearchParams.error}</p> : null}
       <div className={`grid${inactiveView ? '' : ' two'}`}>
         {!inactiveView ? <section className="panel">
           <h2>Nuovo trattore</h2>
@@ -60,7 +112,7 @@ export default async function TractorsPage({ searchParams }: TractorsPageProps) 
                 <input name="model" />
               </label>
               <label>
-                Autista associato
+                Autista iniziale
                 <select name="assignedDriverId" defaultValue="">
                   <option value="">Nessuno</option>
                   {drivers.map((driver) => (
@@ -70,6 +122,11 @@ export default async function TractorsPage({ searchParams }: TractorsPageProps) 
                   ))}
                 </select>
               </label>
+              <DatePartsInput
+                label="Associazione dal"
+                name="assignmentValidFrom"
+                defaultValue={toDateInputValue(today)}
+              />
             </div>
             <label>
               Note
@@ -103,6 +160,13 @@ export default async function TractorsPage({ searchParams }: TractorsPageProps) 
                     <td className="click-cell">
                       <Link className="table-cell-link" href={tractorHref}>
                         <strong>{tractor.plate}</strong>
+                        <div>
+                          {tractor.documents.length > 0 ? (
+                            <span className="badge valid tachograph-evidence-badge">Aggiornamento tachigrafo documentato</span>
+                          ) : (
+                            <span className="badge thirtyDays tachograph-evidence-badge">Documentazione tachigrafo mancante</span>
+                          )}
+                        </div>
                       </Link>
                     </td>
                     <td className="click-cell">
@@ -113,7 +177,9 @@ export default async function TractorsPage({ searchParams }: TractorsPageProps) 
                     </td>
                     <td className="click-cell">
                       <Link className="table-cell-link" href={tractorHref}>
-                        {tractor.assignedDriver ? `${tractor.assignedDriver.lastName} ${tractor.assignedDriver.firstName}`.trim() : '-'}
+                        {tractor.driverAssignments[0]
+                          ? `${tractor.driverAssignments[0].driver.lastName} ${tractor.driverAssignments[0].driver.firstName}`.trim()
+                          : '-'}
                       </Link>
                     </td>
                     <td className="click-cell">

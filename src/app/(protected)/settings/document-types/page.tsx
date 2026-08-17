@@ -75,6 +75,10 @@ export default async function DocumentTypesPage() {
               <input name="defaultNoticeDays" type="number" min={1} defaultValue={30} required />
             </label>
             <label className="checkbox-row">
+              <input name="expiryRequired" type="checkbox" defaultChecked />
+              Richiede una scadenza
+            </label>
+            <label className="checkbox-row">
               <input name="active" type="checkbox" defaultChecked />
               Attivo
             </label>
@@ -91,6 +95,7 @@ export default async function DocumentTypesPage() {
                 <th>Nome</th>
                 <th>Categoria suggerita</th>
                 <th>Preavviso</th>
+                <th>Scadenza</th>
                 <th>Stato</th>
                 <th>Azioni</th>
               </tr>
@@ -121,6 +126,17 @@ export default async function DocumentTypesPage() {
                       defaultValue={documentType.defaultNoticeDays}
                       required
                     />
+                  </td>
+                  <td>
+                    <label className="checkbox-row">
+                      <input
+                        name="expiryRequired"
+                        type="checkbox"
+                        form={`type-${documentType.id}`}
+                        defaultChecked={documentType.expiryRequired}
+                      />
+                      Richiesta
+                    </label>
                   </td>
                   <td>
                     <label className="checkbox-row">

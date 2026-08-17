@@ -5,12 +5,14 @@ import { notFound } from 'next/navigation';
 import { Archive, Download, Plus, RotateCw, Save, Trash2, Wand2 } from 'lucide-react';
 import { ConfirmSubmitButton } from '@/components/ConfirmSubmitButton';
 import { DatePartsInput } from '@/components/DatePartsInput';
+import { DocumentTypeExpiryFields } from '@/components/DocumentTypeExpiryFields';
 import { DocumentTable } from '@/components/DocumentTable';
 import { EntitySelect } from '@/components/EntitySelect';
 import { FileUpload } from '@/components/FileUpload';
 import { PageHeader } from '@/components/PageHeader';
+import { RecoverableForm } from '@/components/RecoverableForm';
 import { StatusBadge } from '@/components/StatusBadge';
-import { formatDate, toDateInputValue } from '@/lib/dates';
+import { formatDate, formatExpiryDate, toDateInputValue } from '@/lib/dates';
 import { prisma } from '@/lib/db';
 import { documentCanBeRenewalSource, documentInclude, getDocumentEntityKey, getEntityLabel, getStatusLabel } from '@/lib/documents';
 import { buildEntityOptions } from '@/lib/entities';
@@ -95,7 +97,7 @@ export default async function DocumentDetailPage({ params, searchParams }: Docum
             </div>
             <div>
               <dt>Scadenza</dt>
-              <dd>{formatDate(document.expiryDate)}</dd>
+              <dd>{formatExpiryDate(document.expiryDate)}</dd>
             </div>
             <div>
               <dt>Emissione</dt>
@@ -103,7 +105,7 @@ export default async function DocumentDetailPage({ params, searchParams }: Docum
             </div>
             <div>
               <dt>Preavviso</dt>
-              <dd>{document.noticeDays} giorni</dd>
+              <dd>{document.expiryDate ? `${document.noticeDays} giorni` : 'Non previsto'}</dd>
             </div>
             <div>
               <dt>Costo associato</dt>
@@ -123,26 +125,27 @@ export default async function DocumentDetailPage({ params, searchParams }: Docum
 
         <section className="panel">
           <h2>Modifica metadati</h2>
-          <form action={`/api/documents/${document.id}/update`} method="post" encType="multipart/form-data" className="form-stack" noValidate>
+          <RecoverableForm
+            action={`/api/documents/${document.id}/update`}
+            method="post"
+            encType="multipart/form-data"
+            className="form-stack"
+            noValidate
+            recoveryKey={`document:${document.id}:edit`}
+            recoverOnError={Boolean(resolvedSearchParams.error)}
+          >
             <div className="form-grid">
               <label>
                 Titolo
                 <input name="title" defaultValue={document.title} required />
               </label>
-              <label>
-                Tipo documento
-                <select name="documentTypeId" defaultValue={document.documentTypeId} required>
-                  {documentTypes.map((documentType) => (
-                    <option key={documentType.id} value={documentType.id}>
-                      {documentType.name}
-                      {documentType.active ? '' : ' (non attivo)'}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              <DocumentTypeExpiryFields
+                documentTypes={documentTypes}
+                defaultDocumentTypeId={document.documentTypeId}
+                defaultExpiryDate={toDateInputValue(document.expiryDate)}
+              />
               <EntitySelect options={entityOptions} defaultValue={currentEntityKey} />
               <DatePartsInput label="Data emissione" name="issueDate" defaultValue={toDateInputValue(document.issueDate)} />
-              <DatePartsInput label="Data scadenza" name="expiryDate" defaultValue={toDateInputValue(document.expiryDate)} required />
               <FileUpload label={document.filePath ? 'Sostituisci PDF' : 'Carica PDF'} name="file" />
               <label>
                 Giorni preavviso
@@ -178,7 +181,7 @@ export default async function DocumentDetailPage({ params, searchParams }: Docum
                 Salva
               </button>
             </div>
-          </form>
+          </RecoverableForm>
           <div className="record-actions">
             <form action={archiveDocumentAction.bind(null, document.id)}>
               <button className="secondary-button" type="submit">
@@ -218,22 +221,24 @@ export default async function DocumentDetailPage({ params, searchParams }: Docum
         {canRenewDocument ? (
           <div className="renewal-manual">
             <h3>Rinnovo manuale</h3>
-            <form action={`/api/documents/${document.id}/renew`} method="post" encType="multipart/form-data" className="form-stack" noValidate>
+            <RecoverableForm
+              action={`/api/documents/${document.id}/renew`}
+              method="post"
+              encType="multipart/form-data"
+              className="form-stack"
+              noValidate
+              recoveryKey={`document:${document.id}:renew`}
+              recoverOnError={Boolean(resolvedSearchParams.error)}
+            >
               <div className="form-grid">
-                <label>
-                  Tipo documento
-                  <select name="documentTypeId" defaultValue={document.documentTypeId} required>
-                    {documentTypes.map((documentType) => (
-                      <option key={documentType.id} value={documentType.id}>
-                        {documentType.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
+                <DocumentTypeExpiryFields
+                  documentTypes={documentTypes}
+                  defaultDocumentTypeId={document.documentTypeId}
+                  expiryLabel="Nuova scadenza"
+                />
                 <EntitySelect options={entityOptions} defaultValue={currentEntityKey} />
                 <FileUpload label="Nuovo PDF opzionale" name="file" />
                 <DatePartsInput label="Data emissione" name="issueDate" />
-                <DatePartsInput label="Nuova scadenza" name="expiryDate" required />
                 <label>
                   Giorni preavviso
                   <input name="noticeDays" type="number" min={1} defaultValue={document.noticeDays} required />
@@ -257,7 +262,7 @@ export default async function DocumentDetailPage({ params, searchParams }: Docum
                 <RotateCw size={16} aria-hidden />
                 Marca rinnovato e carica nuovo
               </button>
-            </form>
+            </RecoverableForm>
           </div>
         ) : null}
       </section>

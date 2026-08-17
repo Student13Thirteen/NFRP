@@ -75,7 +75,7 @@ export async function getInboxReferenceData() {
   ]);
 
   const barratoRosaExpiries = barratoRosaDocuments.flatMap((document): BarratoRosaExpiryReference[] => {
-    if (document.entityType === EntityType.TRACTOR && document.tractorId && document.tractor) {
+    if (document.entityType === EntityType.TRACTOR && document.tractorId && document.tractor && document.expiryDate) {
       return [{
         entityType: EntityType.TRACTOR,
         entityId: document.tractorId,
@@ -84,7 +84,7 @@ export async function getInboxReferenceData() {
       }];
     }
 
-    if (document.entityType === EntityType.TRAILER && document.trailerId && document.trailer) {
+    if (document.entityType === EntityType.TRAILER && document.trailerId && document.trailer && document.expiryDate) {
       return [{
         entityType: EntityType.TRAILER,
         entityId: document.trailerId,
@@ -636,11 +636,11 @@ function suggestionKey(item: SuggestedInboxItem): string | null {
   return `${item.suggestedDocumentTypeId}:${item.suggestedEntityType}:${item.suggestedEntityId}`;
 }
 
-function getSuggestedImportBlockers(item: SuggestedInboxItem): string[] {
+function getSuggestedImportBlockers(item: SuggestedInboxItem, expiryRequired = true): string[] {
   const blockers: string[] = [];
   if (!item.suggestedDocumentTypeId) blockers.push('tipo documento mancante');
   if (!item.suggestedEntityType || !item.suggestedEntityId) blockers.push('associazione mancante');
-  if (!item.suggestedExpiryDate) blockers.push('scadenza mancante');
+  if (expiryRequired && !item.suggestedExpiryDate) blockers.push('scadenza mancante');
   return blockers;
 }
 
@@ -652,7 +652,10 @@ function suggestedEntityWhere(entityType: EntityType, entityId: string): Prisma.
 }
 
 async function findSuggestedReplacementDocumentId(item: SuggestedInboxItem): Promise<string | null> {
-  const blockers = getSuggestedImportBlockers(item);
+  const documentType = item.suggestedDocumentTypeId
+    ? await prisma.documentType.findUnique({ where: { id: item.suggestedDocumentTypeId }, select: { expiryRequired: true } })
+    : null;
+  const blockers = getSuggestedImportBlockers(item, documentType?.expiryRequired ?? true);
   if (blockers.length > 0 || !item.suggestedDocumentTypeId || !item.suggestedEntityType || !item.suggestedEntityId) {
     throw new Error(`Suggerimenti incompleti: ${blockers.join(', ')}.`);
   }
@@ -701,6 +704,11 @@ async function getBulkValidationCandidates() {
     select: suggestedInboxSelect
   });
   const keyCounts = new Map<string, number>();
+  const documentTypeIds = Array.from(new Set(items.flatMap((item) => item.suggestedDocumentTypeId ? [item.suggestedDocumentTypeId] : [])));
+  const documentTypes = documentTypeIds.length > 0
+    ? await prisma.documentType.findMany({ where: { id: { in: documentTypeIds } }, select: { id: true, expiryRequired: true } })
+    : [];
+  const expiryRequiredByTypeId = new Map(documentTypes.map((documentType) => [documentType.id, documentType.expiryRequired]));
   for (const item of items) {
     const key = suggestionKey(item);
     if (key) keyCounts.set(key, (keyCounts.get(key) || 0) + 1);
@@ -708,7 +716,10 @@ async function getBulkValidationCandidates() {
 
   const completeUniqueItems = items.filter((item) => {
     const key = suggestionKey(item);
-    return getSuggestedImportBlockers(item).length === 0 && Boolean(key) && (keyCounts.get(key || '') || 0) === 1;
+    const expiryRequired = item.suggestedDocumentTypeId
+      ? expiryRequiredByTypeId.get(item.suggestedDocumentTypeId) ?? true
+      : true;
+    return getSuggestedImportBlockers(item, expiryRequired).length === 0 && Boolean(key) && (keyCounts.get(key || '') || 0) === 1;
   });
   const replacementWhere = completeUniqueItems.flatMap((item): Prisma.DocumentWhereInput[] => {
     if (!item.suggestedDocumentTypeId || !item.suggestedEntityType || !item.suggestedEntityId) return [];
@@ -753,7 +764,7 @@ export async function getReadyInboxSuggestionCount(): Promise<number> {
 }
 
 function buildSuggestedDocumentFormData(item: SuggestedInboxItem, replacementDocumentId: string | null): FormData {
-  if (!item.suggestedDocumentTypeId || !item.suggestedEntityType || !item.suggestedEntityId || !item.suggestedExpiryDate) {
+  if (!item.suggestedDocumentTypeId || !item.suggestedEntityType || !item.suggestedEntityId) {
     throw new Error('Suggerimenti incompleti.');
   }
 
@@ -762,7 +773,7 @@ function buildSuggestedDocumentFormData(item: SuggestedInboxItem, replacementDoc
   formData.set('documentTypeId', item.suggestedDocumentTypeId);
   formData.set('entityKey', `${item.suggestedEntityType}:${item.suggestedEntityId}`);
   formData.set('issueDate', isoDateValue(item.suggestedIssueDate));
-  formData.set('expiryDate', isoDateValue(item.suggestedExpiryDate));
+  if (item.suggestedExpiryDate) formData.set('expiryDate', isoDateValue(item.suggestedExpiryDate));
   if (item.suggestedNoticeDays) formData.set('noticeDays', String(item.suggestedNoticeDays));
   if (item.suggestedNotes) formData.set('notes', item.suggestedNotes);
   if (item.suggestedAmountCents !== null) {

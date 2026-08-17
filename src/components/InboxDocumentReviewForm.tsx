@@ -11,6 +11,7 @@ type DocumentTypeOption = {
   name: string;
   active: boolean;
   defaultNoticeDays: number;
+  expiryRequired: boolean;
 };
 
 type StatusOption = {
@@ -64,6 +65,8 @@ export function InboxDocumentReviewForm({
   const [entityKey, setEntityKey] = useState(defaultValues.entityKey);
   const [replacementMode, setReplacementMode] = useState<'replace' | 'keep'>('replace');
   const [selectedReplacementId, setSelectedReplacementId] = useState(defaultReplacementDocumentId || '');
+  const selectedDocumentType = documentTypes.find((documentType) => documentType.id === documentTypeId);
+  const expiryRequired = selectedDocumentType?.expiryRequired ?? true;
 
   const matchingCandidates = useMemo(
     () =>
@@ -113,7 +116,13 @@ export function InboxDocumentReviewForm({
         </label>
         <EntitySelect options={entityOptions} defaultValue={defaultValues.entityKey} onValueChange={setEntityKey} />
         <DatePartsInput label="Data emissione" name="issueDate" defaultValue={defaultValues.issueDate} />
-        <DatePartsInput label="Data scadenza" name="expiryDate" defaultValue={defaultValues.expiryDate} required />
+        <DatePartsInput
+          key={expiryRequired ? 'expiry-required' : 'expiry-not-required'}
+          label={expiryRequired ? 'Data scadenza' : 'Data scadenza (non prevista)'}
+          name="expiryDate"
+          defaultValue={expiryRequired ? defaultValues.expiryDate : undefined}
+          required={expiryRequired}
+        />
         <label>
           Giorni preavviso
           <input name="noticeDays" type="number" min={1} defaultValue={defaultValues.noticeDays} required />

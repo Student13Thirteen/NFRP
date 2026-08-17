@@ -33,16 +33,30 @@ export async function POST(request: NextRequest) {
       result.createdCards > 0 ? `${result.createdCards} tessere create` : null,
       result.assignedCards > 0 ? `${result.assignedCards} tessere associate a targa` : null,
       result.createdTractors > 0 ? `${result.createdTractors} targhe aggiunte in anagrafica` : null,
-      result.reviewRows > 0 ? `${result.reviewRows} righe da controllare` : null
+      result.reviewRows > 0 ? `${result.reviewRows} righe da controllare` : null,
+      result.recoverableDiscardedRows > 0
+        ? `${result.recoverableDiscardedRows} righe erano già scartate: puoi ripristinarle dal file originale`
+        : null
     ].filter(Boolean);
 
     await setFlashMessage({
       type: 'info',
       title: 'Import autostrade completato',
-      message: `${details.join(', ')}. Controlla e conferma le righe importate.`
+      message: result.importedRows > 0
+        ? `${details.join(', ')}. Controlla e conferma le righe importate.`
+        : `${details.join(', ')}. Non è stato creato un nuovo file vuoto.`
     });
 
-    return redirectTo(result.importedRows > 0 ? '/tolls/import/review' : '/tolls');
+    const recoveryPath = result.recoverableBatchIds.length === 1
+      ? `/tolls/imports/${encodeURIComponent(result.recoverableBatchIds[0]!)}?status=discarded`
+      : '/tolls?status=discarded';
+    return redirectTo(
+      result.importedRows > 0
+        ? '/tolls/import/review'
+        : result.recoverableDiscardedRows > 0
+          ? recoveryPath
+          : '/tolls'
+    );
   } catch (error) {
     console.error('Import autostrade fallito.', error);
     return redirectWithError('/tolls/import', getTollActionErrorMessage(error));

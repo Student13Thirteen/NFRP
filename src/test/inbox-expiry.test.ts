@@ -37,11 +37,11 @@ describe('inbox expiry overrides', () => {
   it('ignores an already-expired barrato rosa instead of forcing a past expiry', () => {
     const override = findBarratoRosaLibrettoExpiryOverride(
       'Libretto/Revisione Semirimorchio',
-      { entityType: EntityType.TRAILER, entityId: 'trailer-xa633pp' },
+      { entityType: EntityType.TRAILER, entityId: 'trailer-demo' },
       [
         {
           entityType: EntityType.TRAILER,
-          entityId: 'trailer-xa633pp',
+          entityId: 'trailer-demo',
           label: 'ZZ117ZZ',
           expiryDate: new Date('2026-06-06T00:00:00.000Z')
         }
@@ -55,17 +55,17 @@ describe('inbox expiry overrides', () => {
   it('prefers a not-yet-expired barrato rosa over an older expired one', () => {
     const override = findBarratoRosaLibrettoExpiryOverride(
       'Libretto/Revisione Semirimorchio',
-      { entityType: EntityType.TRAILER, entityId: 'trailer-xa633pp' },
+      { entityType: EntityType.TRAILER, entityId: 'trailer-demo' },
       [
         {
           entityType: EntityType.TRAILER,
-          entityId: 'trailer-xa633pp',
+          entityId: 'trailer-demo',
           label: 'ZZ117ZZ',
           expiryDate: new Date('2026-06-06T00:00:00.000Z')
         },
         {
           entityType: EntityType.TRAILER,
-          entityId: 'trailer-xa633pp',
+          entityId: 'trailer-demo',
           label: 'ZZ117ZZ',
           expiryDate: new Date('2027-06-06T00:00:00.000Z')
         }

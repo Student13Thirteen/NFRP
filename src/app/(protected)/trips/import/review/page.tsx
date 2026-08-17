@@ -5,7 +5,9 @@ import { ConfirmSubmitButton } from '@/components/ConfirmSubmitButton';
 import { PageHeader } from '@/components/PageHeader';
 import { formatDate } from '@/lib/dates';
 import { prisma } from '@/lib/db';
+import { findDriverNameSuggestion, getTripImportDriverFieldName } from '@/lib/driver-name-match';
 import { tripImportRowInclude, type TripImportRowWithRelations } from '@/lib/trip-import';
+import { buildDriverOptions } from '@/lib/trips';
 import {
   confirmAndCompleteTripImportRowAction,
   confirmAllTripImportsAction,
@@ -21,6 +23,8 @@ type BatchGroup = {
   extractionStatus: string | null;
   rows: TripImportRowWithRelations[];
 };
+
+const REVIEW_FORM_ID = 'trip-import-driver-review';
 
 function groupByBatch(rows: TripImportRowWithRelations[]): BatchGroup[] {
   const groups = new Map<string, BatchGroup>();
@@ -86,13 +90,25 @@ function containerLabel(row: TripImportRowWithRelations): string {
 
 export default async function TripImportReviewPage() {
   await requireUser();
-  const pendingRows = await prisma.tripImportRow.findMany({
-    where: { status: 'PENDING' },
-    include: tripImportRowInclude,
-    orderBy: [{ tripDate: 'asc' }, { createdAt: 'asc' }]
-  });
+  const [pendingRows, drivers] = await Promise.all([
+    prisma.tripImportRow.findMany({
+      where: { status: 'PENDING' },
+      include: tripImportRowInclude,
+      orderBy: [{ tripDate: 'asc' }, { createdAt: 'asc' }]
+    }),
+    prisma.driver.findMany({ orderBy: [{ active: 'desc' }, { lastName: 'asc' }, { firstName: 'asc' }] })
+  ]);
   const groups = groupByBatch(pendingRows);
-  const rowsWithWarnings = pendingRows.filter((row) => row.reviewReasons).length;
+  const driverOptions = buildDriverOptions(drivers);
+  const driverSelectionByRowId = new Map(
+    pendingRows.map((row) => [
+      row.id,
+      row.driverId || findDriverNameSuggestion(row.driverName, drivers)?.driver.id || ''
+    ])
+  );
+  const rowsWithWarnings = pendingRows.filter(
+    (row) => row.reviewReasons || (row.driverName && !driverSelectionByRowId.get(row.id))
+  ).length;
 
   return (
     <>
@@ -113,27 +129,32 @@ export default async function TripImportReviewPage() {
       />
 
       <section className="panel" style={{ marginBottom: 18 }}>
+        <form id={REVIEW_FORM_ID} />
         <p>
-          Il PDF propone i dati ma non li rende definitivi: aprilo quando compaiono avvisi. Le tappe multiple restano
-          righe distinte; km, dogana, soste, importi e note si completano nella scheda del viaggio anche in un secondo momento.
+          Il PDF propone anche l&apos;autista piu simile presente in anagrafica, ma non lo rende definitivo: controlla o
+          correggi la tendina prima di confermare. Le tappe multiple restano righe distinte; km, dogana, soste, importi
+          e note si completano nella scheda del viaggio anche in un secondo momento.
         </p>
         {pendingRows.length > 0 ? (
           <div className="actions-row" style={{ marginTop: 12 }}>
-            <form action={confirmAllTripImportsAction}>
-              <ConfirmSubmitButton
-                className="primary-button"
-                message={`Confermare TUTTE le ${pendingRows.length} bolle viaggio in attesa?`}
-              >
-                <Check size={16} aria-hidden />
-                Conferma tutte ({pendingRows.length})
-              </ConfirmSubmitButton>
-            </form>
-            <form action={discardAllTripImportsAction}>
-              <ConfirmSubmitButton className="danger-button" message={`Scartare TUTTE le ${pendingRows.length} bolle viaggio in attesa?`}>
-                <Trash2 size={16} aria-hidden />
-                Scarta tutte
-              </ConfirmSubmitButton>
-            </form>
+            <ConfirmSubmitButton
+              className="primary-button"
+              form={REVIEW_FORM_ID}
+              formAction={confirmAllTripImportsAction}
+              message={`Confermare TUTTE le ${pendingRows.length} bolle con gli autisti selezionati?`}
+            >
+              <Check size={16} aria-hidden />
+              Conferma tutte ({pendingRows.length})
+            </ConfirmSubmitButton>
+            <ConfirmSubmitButton
+              className="danger-button"
+              form={REVIEW_FORM_ID}
+              formAction={discardAllTripImportsAction}
+              message={`Scartare TUTTE le ${pendingRows.length} bolle viaggio in attesa?`}
+            >
+              <Trash2 size={16} aria-hidden />
+              Scarta tutte
+            </ConfirmSubmitButton>
           </div>
         ) : null}
       </section>
@@ -181,17 +202,23 @@ export default async function TripImportReviewPage() {
                   <Download size={14} aria-hidden />
                   Apri PDF
                 </Link>
-                <form action={confirmTripImportBatchAction.bind(null, group.batchId)}>
-                  <ConfirmSubmitButton className="primary-button compact-button" message={`Confermare le ${group.rows.length} righe di questo PDF?`}>
-                    <Check size={14} aria-hidden />
-                    Conferma PDF
-                  </ConfirmSubmitButton>
-                </form>
-                <form action={discardTripImportBatchAction.bind(null, group.batchId)}>
-                  <ConfirmSubmitButton className="danger-button compact-button" message={`Scartare le ${group.rows.length} righe di questo PDF?`}>
-                    <Trash2 size={14} aria-hidden />
-                  </ConfirmSubmitButton>
-                </form>
+                <ConfirmSubmitButton
+                  className="primary-button compact-button"
+                  form={REVIEW_FORM_ID}
+                  formAction={confirmTripImportBatchAction.bind(null, group.batchId)}
+                  message={`Confermare le ${group.rows.length} righe di questo PDF con gli autisti selezionati?`}
+                >
+                  <Check size={14} aria-hidden />
+                  Conferma PDF
+                </ConfirmSubmitButton>
+                <ConfirmSubmitButton
+                  className="danger-button compact-button"
+                  form={REVIEW_FORM_ID}
+                  formAction={discardTripImportBatchAction.bind(null, group.batchId)}
+                  message={`Scartare le ${group.rows.length} righe di questo PDF?`}
+                >
+                  <Trash2 size={14} aria-hidden />
+                </ConfirmSubmitButton>
               </div>
             </div>
             <table>
@@ -211,6 +238,7 @@ export default async function TripImportReviewPage() {
                 {group.rows.map((row) => {
                   const stopLabels = parsedStopLabels(row);
                   const canConfirm = Boolean((row.tripDate || row.documentDate) && (row.customerCode || row.customerName));
+                  const selectedDriverId = driverSelectionByRowId.get(row.id) || '';
 
                   return (
                     <tr key={row.id}>
@@ -219,8 +247,28 @@ export default async function TripImportReviewPage() {
                         <div className="muted">{row.documentNumber || '-'}</div>
                       </td>
                       <td>
-                        <strong>Da inserire manualmente</strong>
-                        {row.driverName ? <div className="muted">Nel PDF: {row.driverName} (non importato)</div> : null}
+                        <label className="trip-import-driver-field">
+                          <span>Autista da validare</span>
+                          <select
+                            name={getTripImportDriverFieldName(row.id)}
+                            form={REVIEW_FORM_ID}
+                            defaultValue={selectedDriverId}
+                            aria-label={`Autista da validare per bolla ${row.documentNumber || row.id}`}
+                          >
+                            <option value="">Non assegnato</option>
+                            {driverOptions.map((driver) => (
+                              <option value={driver.id} key={driver.id}>
+                                {driver.label}{driver.active === false ? ' (non attivo)' : ''}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        {row.driverName ? <div className="muted">Letto nel PDF: {row.driverName}</div> : null}
+                        {selectedDriverId ? (
+                          <div className="trip-import-driver-match">Proposta automatica: controlla prima di confermare.</div>
+                        ) : (
+                          <div className="trip-import-driver-match is-unmatched">Nessuna corrispondenza sicura: scegli tu l&apos;autista.</div>
+                        )}
                         <div className="muted">
                           {vehicleLabel(row)}
                           {trailerLabel(row) ? ` / ${trailerLabel(row)}` : ''}
@@ -250,17 +298,24 @@ export default async function TripImportReviewPage() {
                       </td>
                       <td>
                         <div className="actions-row">
-                          <form action={confirmAndCompleteTripImportRowAction.bind(null, row.id)}>
-                            <button className="primary-button compact-button" type="submit" disabled={!canConfirm}>
-                              <ArrowRight size={15} aria-hidden />
-                              Crea e completa
-                            </button>
-                          </form>
-                          <form action={discardTripImportRowAction.bind(null, row.id)}>
-                            <ConfirmSubmitButton className="danger-button compact-button" message="Scartare questa bolla viaggio?">
-                              <Trash2 size={15} aria-hidden />
-                            </ConfirmSubmitButton>
-                          </form>
+                          <button
+                            className="primary-button compact-button"
+                            type="submit"
+                            form={REVIEW_FORM_ID}
+                            formAction={confirmAndCompleteTripImportRowAction.bind(null, row.id)}
+                            disabled={!canConfirm}
+                          >
+                            <ArrowRight size={15} aria-hidden />
+                            Crea e completa
+                          </button>
+                          <ConfirmSubmitButton
+                            className="danger-button compact-button"
+                            form={REVIEW_FORM_ID}
+                            formAction={discardTripImportRowAction.bind(null, row.id)}
+                            message="Scartare questa bolla viaggio?"
+                          >
+                            <Trash2 size={15} aria-hidden />
+                          </ConfirmSubmitButton>
                         </div>
                         {!canConfirm ? <div className="muted">Manca data o committente</div> : null}
                       </td>

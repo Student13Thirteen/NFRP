@@ -2,7 +2,7 @@ import { requireUser } from '@/lib/auth';
 import Link from 'next/link';
 import { TollEntryStatus } from '@prisma/client';
 import { notFound } from 'next/navigation';
-import { AlertTriangle, ArrowLeft, Check, Download, Filter, Trash2 } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, Check, Download, Filter, RotateCcw, Trash2 } from 'lucide-react';
 import { ConfirmSubmitButton } from '@/components/ConfirmSubmitButton';
 import { DatePartFilters } from '@/components/DatePartFilters';
 import { FilteredReportButton } from '@/components/FilteredReportButton';
@@ -17,6 +17,7 @@ import {
   formatTollMoney,
   getTollEntryStatusLabel,
   getTollVehicleLabel,
+  isReportableTollEntryStatus,
   tollEntryInclude,
   tollEntryMatchesSearch,
   type TollEntryWithRelations
@@ -25,8 +26,10 @@ import { getVehicleLabel } from '@/lib/trips';
 import {
   confirmTollBatchDetailAction,
   confirmTollEntryDetailAction,
-  deletePendingTollEntryDetailAction,
-  deleteTollBatchDetailAction
+  discardPendingTollEntryDetailAction,
+  discardTollBatchDetailAction,
+  restoreDiscardedTollEntryDetailAction,
+  restoreTollBatchDetailAction
 } from '../../import/actions';
 
 type TollBatchDetailSearchParams = DateFilterSearchParams & {
@@ -108,7 +111,7 @@ export default async function TollBatchDetailPage({ params, searchParams }: Toll
 
   const tractorFilter = tractors.some((tractor) => tractor.id === resolvedSearchParams.tractorId) ? resolvedSearchParams.tractorId || '' : '';
   const cardFilter = cards.some((card) => card.id === resolvedSearchParams.cardId) ? resolvedSearchParams.cardId || '' : '';
-  const statusFilter = ['pending', 'needs_review', 'ok', 'verified'].includes(resolvedSearchParams.status || '')
+  const statusFilter = ['pending', 'needs_review', 'ok', 'verified', 'discarded'].includes(resolvedSearchParams.status || '')
     ? resolvedSearchParams.status || ''
     : '';
   const fromDate = parseFilterDateParts(resolvedSearchParams, 'from');
@@ -121,19 +124,26 @@ export default async function TollBatchDetailPage({ params, searchParams }: Toll
     if (statusFilter === 'needs_review' && entry.status !== TollEntryStatus.NEEDS_REVIEW) return false;
     if (statusFilter === 'ok' && entry.status !== TollEntryStatus.OK) return false;
     if (statusFilter === 'verified' && entry.status !== TollEntryStatus.VERIFIED) return false;
+    if (statusFilter === 'discarded' && entry.status !== TollEntryStatus.DISCARDED) return false;
     if (!matchesDateRange(entry, fromDate, toDate)) return false;
     return tollEntryMatchesSearch(entry, resolvedSearchParams.q);
   });
+  const summaryEntries = statusFilter === 'discarded'
+    ? filteredEntries
+    : filteredEntries.filter((entry) => entry.status !== TollEntryStatus.DISCARDED);
+  const excludedDiscardedCount = filteredEntries.length - summaryEntries.length;
 
   const pagination = paginateItems(filteredEntries, resolvedSearchParams.page, resolvedSearchParams.pageSize);
-  const totalNetCents = filteredEntries.reduce((sum, entry) => sum + entry.netAmountCents, 0);
-  const totalVatCents = filteredEntries.reduce((sum, entry) => sum + entry.vatAmountCents, 0);
-  const totalGrossCents = filteredEntries.reduce((sum, entry) => sum + entry.grossAmountCents, 0);
-  const totalDistanceKm = filteredEntries.reduce((sum, entry) => sum + (entry.distanceKm || 0), 0);
+  const totalNetCents = summaryEntries.reduce((sum, entry) => sum + entry.netAmountCents, 0);
+  const totalVatCents = summaryEntries.reduce((sum, entry) => sum + entry.vatAmountCents, 0);
+  const totalGrossCents = summaryEntries.reduce((sum, entry) => sum + entry.grossAmountCents, 0);
+  const totalDistanceKm = summaryEntries.reduce((sum, entry) => sum + (entry.distanceKm || 0), 0);
   const pendingCount = entries.filter((entry) => entry.status === TollEntryStatus.PENDING).length;
-  const hasReportableEntries = filteredEntries.some((entry) => entry.status !== TollEntryStatus.PENDING);
-  const reviewCount = filteredEntries.filter((entry) => Boolean(entry.reviewReasons)).length;
-  const plateSummaries = buildPlateSummaries(filteredEntries);
+  const discardedCount = entries.filter((entry) => entry.status === TollEntryStatus.DISCARDED).length;
+  const hasReportableEntries = filteredEntries.some((entry) => isReportableTollEntryStatus(entry.status));
+  const reviewCount = summaryEntries.filter((entry) => Boolean(entry.reviewReasons)).length;
+  const plateSummaries = buildPlateSummaries(summaryEntries);
+  const isDiscardedSummary = statusFilter === 'discarded';
   const title = batch.invoiceNumber ? `Fattura ${batch.invoiceNumber}` : 'Dettaglio file autostrade';
 
   return (
@@ -172,8 +182,8 @@ export default async function TollBatchDetailPage({ params, searchParams }: Toll
                 Conferma file
               </ConfirmSubmitButton>
             </form>
-            <form action={deleteTollBatchDetailAction.bind(null, batchId)}>
-              <ConfirmSubmitButton className="danger-button" message={`Scartare tutti i ${pendingCount} pedaggi in attesa di questo file?`}>
+            <form action={discardTollBatchDetailAction.bind(null, batchId)}>
+              <ConfirmSubmitButton className="secondary-button" message={`Spostare i ${pendingCount} pedaggi in attesa nello storico? Potrai ripristinarli.`}>
                 <Trash2 size={16} aria-hidden />
                 Scarta file
               </ConfirmSubmitButton>
@@ -182,14 +192,36 @@ export default async function TollBatchDetailPage({ params, searchParams }: Toll
         </section>
       ) : null}
 
-      <section className="metrics" aria-label="Riepilogo fattura autostrade">
-        <div className="metric"><span>Totale ivato</span><strong>{formatTollMoney(totalGrossCents)}</strong></div>
+      {discardedCount > 0 ? (
+        <section className="workflow-status toll-file-review-status">
+          <span className="workflow-status-icon"><RotateCcw size={20} aria-hidden /></span>
+          <span className="workflow-status-copy">
+            <strong>{discardedCount.toLocaleString('it-IT')} pedaggi scartati e recuperabili</strong>
+            <small>Non entrano nei report o nel centro costi finche non li ripristini e confermi.</small>
+          </span>
+          <form action={restoreTollBatchDetailAction.bind(null, batchId)}>
+            <ConfirmSubmitButton className="secondary-button" message={`Ripristinare ${discardedCount} pedaggi nella coda da controllare?`}>
+              <RotateCcw size={16} aria-hidden />
+              Ripristina file
+            </ConfirmSubmitButton>
+          </form>
+        </section>
+      ) : null}
+
+      <section className="metrics" aria-label={isDiscardedSummary ? 'Riepilogo pedaggi scartati' : 'Riepilogo operativo fattura autostrade'}>
+        <div className="metric"><span>{isDiscardedSummary ? 'Totale scartato' : 'Totale operativo'}</span><strong>{formatTollMoney(totalGrossCents)}</strong></div>
         <div className="metric"><span>Netto</span><strong>{formatTollMoney(totalNetCents)}</strong></div>
         <div className="metric"><span>IVA</span><strong>{formatTollMoney(totalVatCents)}</strong></div>
-        <div className="metric"><span>Pedaggi</span><strong>{filteredEntries.length.toLocaleString('it-IT')}</strong></div>
+        <div className="metric"><span>Pedaggi</span><strong>{summaryEntries.length.toLocaleString('it-IT')}</strong></div>
         <div className="metric"><span>Distanza</span><strong>{formatTollDistance(totalDistanceKm)}</strong></div>
         <div className="metric"><span>Avvisi</span><strong>{reviewCount}</strong></div>
       </section>
+      {excludedDiscardedCount > 0 ? (
+        <p className="muted" role="note">
+          Il riepilogo operativo esclude {excludedDiscardedCount.toLocaleString('it-IT')} pedaggi scartati. Restano
+          visibili nella tabella e nel filtro “Scartati”, ma non entrano nei costi o nel report.
+        </p>
+      ) : null}
 
       <form className="filter-bar fuel-filter-bar" action={`/tolls/imports/${batchId}`}>
         <label className="fuel-filter-search">
@@ -220,6 +252,7 @@ export default async function TollBatchDetailPage({ params, searchParams }: Toll
             <option value="needs_review">Da verificare</option>
             <option value="ok">OK</option>
             <option value="verified">Verificati</option>
+            <option value="discarded">Scartati</option>
           </select>
         </label>
         <div className="filter-actions">
@@ -230,7 +263,7 @@ export default async function TollBatchDetailPage({ params, searchParams }: Toll
       </form>
 
       <section className="detail-section" style={{ marginBottom: 18 }}>
-        <h2>Riepilogo per targa</h2>
+        <h2>{isDiscardedSummary ? 'Riepilogo scartati per targa' : 'Riepilogo operativo per targa'}</h2>
         <div className="table-wrap">
           <table>
             <thead><tr><th>Targa</th><th>Pedaggi</th><th>Distanza</th><th>Netto</th><th>IVA</th><th>Ivato</th><th>Avvisi</th></tr></thead>
@@ -289,10 +322,20 @@ export default async function TollBatchDetailPage({ params, searchParams }: Toll
                       <form action={confirmTollEntryDetailAction.bind(null, batchId, entry.id)}>
                         <button className="primary-button compact-button" type="submit"><Check size={14} aria-hidden />Conferma</button>
                       </form>
-                      <form action={deletePendingTollEntryDetailAction.bind(null, batchId, entry.id)}>
-                        <ConfirmSubmitButton className="danger-button compact-button" message="Scartare questo pedaggio?"><Trash2 size={14} aria-hidden /></ConfirmSubmitButton>
+                      <form action={discardPendingTollEntryDetailAction.bind(null, batchId, entry.id)}>
+                        <ConfirmSubmitButton
+                          aria-label={`Scarta il pedaggio ${entry.routeName} del ${formatDate(entry.tollDate)}`}
+                          className="secondary-button compact-button"
+                          message="Spostare questo pedaggio nello storico? Potrai ripristinarlo."
+                        >
+                          <Trash2 size={14} aria-hidden />
+                        </ConfirmSubmitButton>
                       </form>
                     </div>
+                  ) : entry.status === TollEntryStatus.DISCARDED ? (
+                    <form action={restoreDiscardedTollEntryDetailAction.bind(null, batchId, entry.id)}>
+                      <button className="secondary-button compact-button" type="submit"><RotateCcw size={14} aria-hidden />Ripristina</button>
+                    </form>
                   ) : '-'}
                 </td>
               </tr>

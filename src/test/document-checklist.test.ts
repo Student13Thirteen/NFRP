@@ -60,4 +60,17 @@ describe('document checklist', () => {
     });
     expect(checklist.excluded).toBe(0);
   });
+
+  it('treats a non-expiring evidence document as inserted', () => {
+    const checklist = buildDocumentChecklist(
+      [{ id: 'tachograph-update', name: 'Aggiornamento tachigrafo digitale' }],
+      [{ id: 'evidence', documentTypeId: 'tachograph-update', expiryDate: null, filePath: 'evidence.pdf' }],
+      []
+    );
+
+    expect(checklist.items[0]).toMatchObject({
+      status: 'inserted',
+      latestDocument: { id: 'evidence', expiryDate: null, hasFile: true }
+    });
+  });
 });

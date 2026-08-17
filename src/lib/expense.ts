@@ -1,7 +1,7 @@
-import { Prisma, type Driver, type Tractor, type Trailer } from '@prisma/client';
+import { Prisma, type Tractor, type Trailer } from '@prisma/client';
 import { getVehicleLabel } from '@/lib/trips';
 import { buildMaintenanceVehicleOptions } from '@/lib/maintenance';
-import type { AllocationKind } from '@/lib/expense-shared';
+import { formatQuantityMilli, type AllocationKind } from '@/lib/expense-shared';
 
 export * from '@/lib/expense-shared';
 
@@ -9,7 +9,15 @@ export const expenseLineInclude = Prisma.validator<Prisma.ExpenseLineInclude>()(
   category: true,
   tractor: true,
   trailer: true,
-  warehouseItem: true
+  warehouseItem: true,
+  allocations: {
+    include: {
+      tractor: true,
+      trailer: true,
+      warehouseItem: true
+    },
+    orderBy: { position: 'asc' }
+  }
 });
 
 export const expenseDocumentInclude = Prisma.validator<Prisma.ExpenseDocumentInclude>()({
@@ -22,6 +30,30 @@ export const expenseDocumentInclude = Prisma.validator<Prisma.ExpenseDocumentInc
 
 export type ExpenseDocumentWithRelations = Prisma.ExpenseDocumentGetPayload<{ include: typeof expenseDocumentInclude }>;
 export type ExpenseLineWithRelations = Prisma.ExpenseLineGetPayload<{ include: typeof expenseLineInclude }>;
+export type ExpenseLineAllocationWithRelations = ExpenseLineWithRelations['allocations'][number];
+
+export type ExpenseAllocationView = Pick<
+  ExpenseLineAllocationWithRelations,
+  'id' | 'position' | 'allocationType' | 'quantityMilli' | 'tractorId' | 'trailerId' | 'warehouseItemId' | 'odometerKm'
+> & Pick<ExpenseLineAllocationWithRelations, 'tractor' | 'trailer' | 'warehouseItem'>;
+
+/** Fallback temporaneo per bozze importate prima che la revisione crei le quote figlie. */
+export function getExpenseLineAllocations(line: ExpenseLineWithRelations): ExpenseAllocationView[] {
+  if (line.allocations?.length > 0) return line.allocations;
+  return [{
+    id: `legacy-${line.id}`,
+    position: 0,
+    allocationType: line.allocationType,
+    quantityMilli: line.quantityMilli,
+    tractorId: line.tractorId,
+    trailerId: line.trailerId,
+    warehouseItemId: line.warehouseItemId,
+    odometerKm: line.odometerKm,
+    tractor: line.tractor,
+    trailer: line.trailer,
+    warehouseItem: line.warehouseItem
+  }];
+}
 
 export type ExpenseDocumentListFilters = {
   q: string;
@@ -63,12 +95,12 @@ export function filterAndSortExpenseDocuments(
       if (
         vehicleType === 'TRACTOR' &&
         vehicleId &&
-        !doc.lines.some((line) => line.tractorId === vehicleId)
+        !doc.lines.some((line) => getExpenseLineAllocations(line).some((allocation) => allocation.tractorId === vehicleId))
       ) return false;
       if (
         vehicleType === 'TRAILER' &&
         vehicleId &&
-        !doc.lines.some((line) => line.trailerId === vehicleId)
+        !doc.lines.some((line) => getExpenseLineAllocations(line).some((allocation) => allocation.trailerId === vehicleId))
       ) return false;
       if (!query) return true;
 
@@ -80,9 +112,11 @@ export function filterAndSortExpenseDocuments(
         ...doc.lines.flatMap((line) => [
           line.code,
           line.description,
-          line.tractor?.plate,
-          line.trailer?.plate,
-          line.odometerKm
+          ...getExpenseLineAllocations(line).flatMap((allocation) => [
+            allocation.tractor?.plate,
+            allocation.trailer?.plate,
+            allocation.odometerKm
+          ])
         ])
       ]
         .filter(Boolean)
@@ -119,19 +153,32 @@ export function sumDocumentTotals(
   );
 }
 
-export function getAllocationLabel(
-  line: Pick<ExpenseLineWithRelations, 'allocationType' | 'tractor' | 'trailer'>
+export function getExpenseAllocationLabel(
+  allocation: Pick<ExpenseAllocationView, 'allocationType' | 'tractor' | 'trailer'>
 ): string {
-  switch (line.allocationType) {
+  switch (allocation.allocationType) {
     case 'TRACTOR':
-      return line.tractor ? `Trattore ${getVehicleLabel(line.tractor)}` : 'Trattore';
+      return allocation.tractor ? `Trattore ${getVehicleLabel(allocation.tractor)}` : 'Trattore';
     case 'TRAILER':
-      return line.trailer ? `Semirimorchio ${getVehicleLabel(line.trailer)}` : 'Semirimorchio';
+      return allocation.trailer ? `Semirimorchio ${getVehicleLabel(allocation.trailer)}` : 'Semirimorchio';
     case 'WAREHOUSE':
       return 'Magazzino';
     default:
       return 'Azienda / generico';
   }
+}
+
+export function getAllocationLabel(line: ExpenseLineWithRelations): string {
+  return Array.from(
+    new Set(getExpenseLineAllocations(line).map((allocation) => getExpenseAllocationLabel(allocation)))
+  ).join(', ');
+}
+
+export function getExpenseLineAllocationDetails(line: ExpenseLineWithRelations): string[] {
+  return getExpenseLineAllocations(line).map((allocation) => {
+    const km = allocation.odometerKm === null ? '' : ` · ${allocation.odometerKm.toLocaleString('it-IT')} km`;
+    return `${formatQuantityMilli(allocation.quantityMilli)} ${line.unit} → ${getExpenseAllocationLabel(allocation)}${km}`;
+  });
 }
 
 export type AllocationOption = {
@@ -142,16 +189,15 @@ export type AllocationOption = {
 
 /** Opzioni per la <select> di allocazione di una riga: Magazzino, Azienda, poi le targhe. */
 export function buildAllocationOptions(
-  tractors: Array<
-    Pick<Tractor, 'id' | 'plate' | 'brand' | 'model' | 'active'> & {
-      assignedDriver?: Pick<Driver, 'firstName' | 'lastName'> | null;
-    }
-  >,
-  trailers: Array<Pick<Trailer, 'id' | 'plate' | 'brand' | 'model' | 'active'>>
+  tractors: Array<Pick<Tractor, 'id' | 'plate' | 'brand' | 'model' | 'active'>>,
+  trailers: Array<Pick<Trailer, 'id' | 'plate' | 'brand' | 'model' | 'active'>>,
+  driverLabelsByTractorId: Map<string, string> = new Map()
 ): AllocationOption[] {
   const vehicles = buildMaintenanceVehicleOptions(tractors, trailers).map((vehicle) => ({
     value: vehicle.value,
-    label: vehicle.label,
+    label: vehicle.value.startsWith('TRACTOR:') && driverLabelsByTractorId.get(vehicle.id)
+      ? `${vehicle.label} · autista ${driverLabelsByTractorId.get(vehicle.id)}`
+      : vehicle.label,
     active: vehicle.active
   }));
 

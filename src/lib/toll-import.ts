@@ -13,6 +13,7 @@ import {
   TOLL_PROVIDER_NAME,
   type ParsedTollRow
 } from '@/lib/toll-parser';
+import { summarizeTollDuplicateRecovery } from '@/lib/toll-import-recovery';
 
 type PrismaClientOrTx = typeof prisma | Prisma.TransactionClient;
 
@@ -24,7 +25,7 @@ export type StoredTollCsv = {
 };
 
 type TollImportSingleResult = {
-  batchId: string;
+  batchId: string | null;
   fileName: string;
   parsedRows: number;
   importedRows: number;
@@ -35,6 +36,8 @@ type TollImportSingleResult = {
   createdCards: number;
   assignedCards: number;
   reviewRows: number;
+  recoverableBatchIds: string[];
+  recoverableDiscardedRows: number;
 };
 
 export type TollImportResult = {
@@ -49,6 +52,8 @@ export type TollImportResult = {
   assignedCards: number;
   reviewRows: number;
   lastBatchId: string | null;
+  recoverableBatchIds: string[];
+  recoverableDiscardedRows: number;
 };
 
 function compactPlate(value: string): string {
@@ -369,6 +374,29 @@ async function createTollEntriesFromStoredCsv(storedCsv: StoredTollCsv): Promise
   }
 
   return prisma.$transaction(async (tx) => {
+    const parsedSourceKeys = parsedCsv.rows.map((row) => row.sourceKey);
+    const existingEntries = await tx.tollEntry.findMany({
+      where: { sourceKey: { in: Array.from(new Set(parsedSourceKeys)) } },
+      select: { sourceKey: true, status: true, importBatchId: true }
+    });
+    const recovery = summarizeTollDuplicateRecovery(parsedSourceKeys, existingEntries);
+    if (recovery.allRowsAlreadyPresent) {
+      return {
+        batchId: null,
+        fileName: storedCsv.originalFileName,
+        parsedRows: parsedCsv.rows.length,
+        importedRows: 0,
+        duplicateRows: parsedCsv.rows.length,
+        skippedRows: parsedCsv.skippedLines,
+        pendingRows: 0,
+        createdTractors: 0,
+        createdCards: 0,
+        assignedCards: 0,
+        reviewRows: 0,
+        ...recovery
+      };
+    }
+
     const plates = Array.from(new Set(parsedCsv.rows.map((row) => row.plate)));
     const tractorAssignments = await getTractorAssignments(tx, plates);
     const createdTractorPlates = await ensureMissingTractors(tx, plates, tractorAssignments);
@@ -423,17 +451,21 @@ async function createTollEntriesFromStoredCsv(storedCsv: StoredTollCsv): Promise
       where: { importBatchId: batch.id, reviewReasons: { not: null } }
     });
 
-    await tx.tollImportBatch.update({
-      where: { id: batch.id },
-      data: {
-        importedRows: createResult.count,
-        duplicateRows,
-        skippedRows: parsedCsv.skippedLines
-      }
-    });
+    if (createResult.count > 0) {
+      await tx.tollImportBatch.update({
+        where: { id: batch.id },
+        data: {
+          importedRows: createResult.count,
+          duplicateRows,
+          skippedRows: parsedCsv.skippedLines
+        }
+      });
+    } else {
+      await tx.tollImportBatch.delete({ where: { id: batch.id } });
+    }
 
     return {
-      batchId: batch.id,
+      batchId: createResult.count > 0 ? batch.id : null,
       fileName: storedCsv.originalFileName,
       parsedRows: parsedCsv.rows.length,
       importedRows: createResult.count,
@@ -443,7 +475,8 @@ async function createTollEntriesFromStoredCsv(storedCsv: StoredTollCsv): Promise
       createdTractors: createdTractorPlates.length,
       createdCards,
       assignedCards,
-      reviewRows
+      reviewRows,
+      ...recovery
     };
   });
 }
@@ -456,7 +489,9 @@ export async function importTollCsvFiles(files: File[]): Promise<TollImportResul
   for (const file of files) {
     const storedCsv = await storeTollCsvFile(file);
     try {
-      results.push(await createTollEntriesFromStoredCsv(storedCsv));
+      const result = await createTollEntriesFromStoredCsv(storedCsv);
+      if (!result.batchId) await removeStoredTollCsv(storedCsv.filePath);
+      results.push(result);
     } catch (error) {
       await removeStoredTollCsv(storedCsv.filePath);
       throw error;
@@ -474,7 +509,9 @@ export async function importTollCsvFiles(files: File[]): Promise<TollImportResul
     createdCards: results.reduce((sum, result) => sum + result.createdCards, 0),
     assignedCards: results.reduce((sum, result) => sum + result.assignedCards, 0),
     reviewRows: results.reduce((sum, result) => sum + result.reviewRows, 0),
-    lastBatchId: results.length > 0 ? results[results.length - 1]!.batchId : null
+    lastBatchId: results.map((result) => result.batchId).filter((batchId): batchId is string => Boolean(batchId)).at(-1) || null,
+    recoverableBatchIds: Array.from(new Set(results.flatMap((result) => result.recoverableBatchIds))),
+    recoverableDiscardedRows: results.reduce((sum, result) => sum + result.recoverableDiscardedRows, 0)
   };
 }
 
@@ -492,23 +529,36 @@ async function confirmPendingEntries(where: Prisma.TollEntryWhereInput): Promise
   const cleanIds = entries.filter((entry) => !entry.reviewReasons).map((entry) => entry.id);
   const reviewIds = entries.filter((entry) => entry.reviewReasons).map((entry) => entry.id);
 
-  await prisma.$transaction([
-    cleanIds.length
-      ? prisma.tollEntry.updateMany({ where: { id: { in: cleanIds } }, data: { status: TollEntryStatus.OK } })
-      : prisma.tollEntry.count({ where: { id: '__never__' } }),
-    reviewIds.length
-      ? prisma.tollEntry.updateMany({ where: { id: { in: reviewIds } }, data: { status: TollEntryStatus.NEEDS_REVIEW } })
-      : prisma.tollEntry.count({ where: { id: '__never__' } })
+  const [cleanResult, reviewResult] = await prisma.$transaction([
+    prisma.tollEntry.updateMany({
+      where: { id: { in: cleanIds }, status: TollEntryStatus.PENDING },
+      data: { status: TollEntryStatus.OK }
+    }),
+    prisma.tollEntry.updateMany({
+      where: { id: { in: reviewIds }, status: TollEntryStatus.PENDING },
+      data: { status: TollEntryStatus.NEEDS_REVIEW }
+    })
   ]);
 
-  return entries.length;
+  return cleanResult.count + reviewResult.count;
 }
 
-async function deletePendingEntries(where: Prisma.TollEntryWhereInput): Promise<number> {
+async function discardPendingEntries(where: Prisma.TollEntryWhereInput): Promise<number> {
   const entries = await getPendingEntries(where);
   if (entries.length === 0) return 0;
-  await prisma.tollEntry.deleteMany({ where: { id: { in: entries.map((entry) => entry.id) } } });
-  return entries.length;
+  const result = await prisma.tollEntry.updateMany({
+    where: { id: { in: entries.map((entry) => entry.id) }, status: TollEntryStatus.PENDING },
+    data: { status: TollEntryStatus.DISCARDED }
+  });
+  return result.count;
+}
+
+async function restoreDiscardedEntries(where: Prisma.TollEntryWhereInput): Promise<number> {
+  const result = await prisma.tollEntry.updateMany({
+    where: { ...where, status: TollEntryStatus.DISCARDED },
+    data: { status: TollEntryStatus.PENDING }
+  });
+  return result.count;
 }
 
 export function confirmTollEntry(id: string): Promise<number> {
@@ -523,16 +573,24 @@ export function confirmAllPendingTolls(): Promise<number> {
   return confirmPendingEntries({});
 }
 
-export function deletePendingTollEntry(id: string): Promise<number> {
-  return deletePendingEntries({ id });
+export function discardPendingTollEntry(id: string): Promise<number> {
+  return discardPendingEntries({ id });
 }
 
-export function deleteAllPendingTollsForBatch(batchId: string): Promise<number> {
-  return deletePendingEntries({ importBatchId: batchId });
+export function discardAllPendingTollsForBatch(batchId: string): Promise<number> {
+  return discardPendingEntries({ importBatchId: batchId });
 }
 
-export function deleteAllPendingTolls(): Promise<number> {
-  return deletePendingEntries({});
+export function discardAllPendingTolls(): Promise<number> {
+  return discardPendingEntries({});
+}
+
+export function restoreDiscardedTollEntry(id: string): Promise<number> {
+  return restoreDiscardedEntries({ id });
+}
+
+export function restoreAllDiscardedTollsForBatch(batchId: string): Promise<number> {
+  return restoreDiscardedEntries({ importBatchId: batchId });
 }
 
 export function getTollActionErrorMessage(error: unknown): string {

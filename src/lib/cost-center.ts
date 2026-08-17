@@ -1,11 +1,11 @@
-import { ContainerTripExtraStatus, ContainerTripStatus, FuelEntryStatus, MaintenanceStatus, TollEntryStatus, TripStatus, WarehouseMovementType } from '@prisma/client';
+import { ContainerTripExtraStatus, ContainerTripStatus, FuelEntryStatus, MaintenanceStatus, TripStatus, WarehouseMovementType } from '@prisma/client';
 import { containerTripInclude, getContainerTripStatusLabel } from '@/lib/container-trips';
 import { formatDate } from '@/lib/dates';
 import { prisma } from '@/lib/db';
-import { formatEuroCents } from '@/lib/expense-shared';
+import { allocateExpenseLineAmounts, formatEuroCents } from '@/lib/expense-shared';
 import { getFuelEntryStatusLabel } from '@/lib/fuel';
 import { getMaintenanceStatusLabel } from '@/lib/maintenance';
-import { getTollEntryStatusLabel } from '@/lib/tolls';
+import { getTollEntryStatusLabel, REPORTABLE_TOLL_ENTRY_STATUSES } from '@/lib/tolls';
 import { getTripBillingStatusLabel, getTripSalesPointSummary, getVehicleLabel, tripInclude } from '@/lib/trips';
 import { getWarehouseStatusLabel } from '@/lib/warehouse';
 import { documentInclude, getEntityLabel, getStatusLabel } from '@/lib/documents';
@@ -269,7 +269,7 @@ export async function getCostCenterRows(): Promise<CostCenterRow[]> {
       orderBy: [{ fuelDate: 'desc' }, { fuelTime: 'desc' }]
     }),
     prisma.tollEntry.findMany({
-      where: { status: { not: TollEntryStatus.PENDING } },
+      where: { status: { in: REPORTABLE_TOLL_ENTRY_STATUSES } },
       include: { tractor: true, card: true },
       orderBy: [{ tollDate: 'desc' }, { tollTime: 'desc' }]
     }),
@@ -288,6 +288,10 @@ export async function getCostCenterRows(): Promise<CostCenterRow[]> {
         category: true,
         tractor: true,
         trailer: true,
+        allocations: {
+          include: { tractor: true, trailer: true },
+          orderBy: { position: 'asc' }
+        },
         document: { include: { supplier: true } }
       },
       orderBy: [{ document: { registeredAt: 'desc' } }, { position: 'asc' }]
@@ -556,27 +560,38 @@ export async function getCostCenterRows(): Promise<CostCenterRow[]> {
   }
 
   for (const line of expenseLines) {
-    rows.push({
-      key: `expense-${line.id}`,
-      id: line.id,
-      source: 'EXPENSE',
-      sourceLabel: getCostSourceLabel('EXPENSE'),
-      direction: 'COST',
-      categoryName: line.category?.name || 'Spese',
-      date: line.document.registeredAt,
-      description: line.description,
-      entityLabel: vehicleLabel({ tractor: line.tractor, trailer: line.trailer }),
-      plate: line.tractor?.plate || line.trailer?.plate || null,
+    const allocations = line.allocations.length > 0 ? line.allocations : [{
+      id: `legacy-${line.id}`,
+      quantityMilli: line.quantityMilli,
       tractorId: line.tractorId,
       trailerId: line.trailerId,
-      supplierName: line.document.supplier?.name || line.document.supplierName,
-      reference: line.document.documentNumber,
-      netAmountCents: line.imponibileCents,
-      vatAmountCents: line.vatCents,
-      grossAmountCents: line.totalCents,
-      statusLabel: 'Confermato',
-      href: `/maintenances/expenses/${line.documentId}`,
-      isInternalAllocation: false
+      tractor: line.tractor,
+      trailer: line.trailer
+    }];
+    const amounts = allocateExpenseLineAmounts(line, allocations);
+    allocations.forEach((allocation, index) => {
+      rows.push({
+        key: `expense-${line.id}-${allocation.id}`,
+        id: line.id,
+        source: 'EXPENSE',
+        sourceLabel: getCostSourceLabel('EXPENSE'),
+        direction: 'COST',
+        categoryName: line.category?.name || 'Spese',
+        date: line.document.registeredAt,
+        description: line.description,
+        entityLabel: vehicleLabel({ tractor: allocation.tractor, trailer: allocation.trailer }),
+        plate: allocation.tractor?.plate || allocation.trailer?.plate || null,
+        tractorId: allocation.tractorId,
+        trailerId: allocation.trailerId,
+        supplierName: line.document.supplier?.name || line.document.supplierName,
+        reference: line.document.documentNumber,
+        netAmountCents: amounts[index].imponibileCents,
+        vatAmountCents: amounts[index].vatCents,
+        grossAmountCents: amounts[index].totalCents,
+        statusLabel: 'Confermato',
+        href: `/maintenances/expenses/${line.documentId}`,
+        isInternalAllocation: false
+      });
     });
   }
 

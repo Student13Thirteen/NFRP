@@ -1,6 +1,6 @@
-import { DocumentStatus, EntityType, FuelEntryStatus, MaintenanceStatus, Prisma, TollEntryStatus, TripStatus, WarehouseStatus } from '@prisma/client';
+import { DocumentStatus, EntityType, FuelEntryStatus, MaintenanceStatus, Prisma, TollEntryStatus, TripStatus, VehicleLifecycleStatus, WarehouseStatus } from '@prisma/client';
 import { buildDocumentChecklist } from '@/lib/document-checklist';
-import { daysUntil, formatDate, startOfDay } from '@/lib/dates';
+import { daysUntil, formatDate, formatExpiryDate, startOfDay } from '@/lib/dates';
 import { prisma } from '@/lib/db';
 import {
   documentInclude,
@@ -61,6 +61,7 @@ import {
   formatTollMoney,
   getTollEntryStatusLabel,
   getTollVehicleLabel,
+  REPORTABLE_TOLL_ENTRY_STATUSES,
   tollEntryInclude,
   tollEntryMatchesSearch,
   type TollEntryWithRelations
@@ -79,6 +80,7 @@ import {
   rankVehicleCosts
 } from '@/lib/fleet-analytics';
 import { getOperationalFleetDocumentWhere } from '@/lib/vehicle-lifecycle';
+import { activeTachographUpdateDocumentWhere, TACHOGRAPH_UPDATE_DOCUMENT_TYPE_NAME } from '@/lib/tachograph-update';
 
 const MAX_ASSISTANT_ROWS = 15;
 // Limite di sicurezza per le ricerche che filtrano lato JS: deve restare ben sopra
@@ -154,7 +156,7 @@ export function buildSearchDocumentsWhere(args: AssistantToolArguments, now = ne
   } else if (args.status === 'expiring' || args.withinDays) {
     and.push({ expiryDate: { gte: today, lte: addUtcDays(today, normalizeWithinDays(args.withinDays)) } });
   } else if (args.status === 'valid') {
-    and.push({ expiryDate: { gt: today } });
+    and.push({ OR: [{ expiryDate: null }, { expiryDate: { gt: today } }] });
   }
 
   if (args.missingPdf === true) {
@@ -216,8 +218,8 @@ export function createAssistantDocumentRow(document: DocumentWithRelations, now 
     entityLabel: getEntityLabel(document),
     entityTypeLabel: getEntityTypeLabel(document.entityType),
     documentTypeName: document.documentType.name,
-    expiryDate: formatDate(document.expiryDate),
-    daysUntil: remainingDays,
+    expiryDate: formatExpiryDate(document.expiryDate),
+    daysUntil: document.expiryDate ? remainingDays : null,
     statusLabel: visualStatus === 'inactive' ? getStatusLabel(document.status) : getStatusLabel(visualStatus),
     pdfLabel: document.filePath ? 'PDF presente' : 'PDF mancante',
     href: `/documents/${document.id}`
@@ -409,8 +411,8 @@ export async function getVehicleChecklist(args: AssistantToolArguments): Promise
       entityLabel,
       entityTypeLabel: getEntityTypeLabel(vehicle.entityType),
       documentTypeName: item.name,
-      expiryDate: item.latestDocument ? formatDate(item.latestDocument.expiryDate) : '-',
-      daysUntil: item.latestDocument ? daysUntil(item.latestDocument.expiryDate) : null,
+      expiryDate: item.latestDocument ? formatExpiryDate(item.latestDocument.expiryDate) : '-',
+      daysUntil: item.latestDocument?.expiryDate ? daysUntil(item.latestDocument.expiryDate) : null,
       statusLabel: item.status === 'inserted' ? 'Inserito' : item.status === 'excluded' ? 'Non richiesto' : 'Mancante',
       pdfLabel: item.latestDocument ? (item.latestDocument.hasFile ? 'PDF presente' : 'PDF mancante') : 'PDF mancante',
       href
@@ -426,6 +428,72 @@ export async function getVehicleChecklist(args: AssistantToolArguments): Promise
     rows,
     link: { href: buildVehicleDetailHref(vehicle), label: 'Apri scheda targa' },
     tooMany: checklist.items.length > rows.length
+  };
+}
+
+export async function getTachographUpdateStatus(args: AssistantToolArguments): Promise<AssistantToolResult> {
+  const plate = normalizeAssistantPlate(args.plate);
+  const requestedStatus = args.tachographStatus || 'all';
+  const tractors = await prisma.tractor.findMany({
+    where: {
+      lifecycleStatus: VehicleLifecycleStatus.ACTIVE,
+      ...(plate ? { plate: { equals: plate, mode: 'insensitive' } } : {})
+    },
+    orderBy: { plate: 'asc' },
+    include: {
+      documents: {
+        where: activeTachographUpdateDocumentWhere,
+        orderBy: [{ issueDate: 'desc' }, { createdAt: 'desc' }],
+        take: 1,
+        select: { id: true, issueDate: true, filePath: true }
+      }
+    }
+  });
+  const filtered = tractors.filter((tractor) => {
+    if (requestedStatus === 'documented') return tractor.documents.length > 0;
+    if (requestedStatus === 'missing') return tractor.documents.length === 0;
+    return true;
+  });
+  const rows = filtered.slice(0, MAX_ASSISTANT_ROWS).map((tractor) => {
+    const document = tractor.documents[0];
+    return {
+      id: document?.id,
+      title: tractor.plate,
+      entityLabel: `Trattore ${tractor.plate}`,
+      entityTypeLabel: 'Trattore',
+      documentTypeName: TACHOGRAPH_UPDATE_DOCUMENT_TYPE_NAME,
+      expiryDate: 'Senza scadenza',
+      daysUntil: null,
+      statusLabel: document ? 'Aggiornamento documentato' : 'Documentazione mancante',
+      pdfLabel: document ? 'PDF presente' : 'PDF mancante',
+      href: document ? `/documents/${document.id}` : `/vehicles/tractors/${tractor.id}`,
+      resultType: document ? 'document' : 'summary',
+      dateLabel: document?.issueDate ? 'Data intervento' : undefined,
+      dateValue: document?.issueDate ? formatDate(document.issueDate) : undefined
+    } satisfies AssistantResultRow;
+  });
+  const title = plate
+    ? `Aggiornamento tachigrafo ${plate}`
+    : requestedStatus === 'missing'
+      ? 'Trattori da documentare'
+      : requestedStatus === 'documented'
+        ? 'Trattori con aggiornamento tachigrafo documentato'
+        : 'Stato aggiornamento tachigrafo';
+
+  return {
+    title,
+    message: filtered.length === 0
+      ? `${title}: nessun risultato. Lo stato si basa esclusivamente sui PDF validati nel gestionale.`
+      : `${title}: ${resultCountLabel(filtered.length)}. Lo stato si basa sui PDF validati, non certifica una versione software specifica.`,
+    total: filtered.length,
+    rows,
+    link: {
+      href: plate
+        ? (filtered[0] ? `/vehicles/tractors/${filtered[0].id}` : '/vehicles/tractors')
+        : `/vehicles/tractors${requestedStatus === 'all' ? '' : `?tachograph=${requestedStatus}`}`,
+      label: 'Apri trattori'
+    },
+    tooMany: filtered.length > rows.length
   };
 }
 
@@ -724,7 +792,7 @@ function buildTollFilterHref(args: AssistantToolArguments): string {
 export async function searchTollEntries(args: AssistantToolArguments): Promise<AssistantToolResult> {
   const now = new Date();
   const entries = await prisma.tollEntry.findMany({
-    where: { status: { not: TollEntryStatus.PENDING } },
+    where: { status: { in: REPORTABLE_TOLL_ENTRY_STATUSES } },
     include: tollEntryInclude,
     orderBy: [{ tollDate: 'desc' }, { tollTime: 'desc' }, { createdAt: 'desc' }],
     take: MAX_ASSISTANT_SCAN
@@ -749,12 +817,12 @@ export async function getTollSummary(): Promise<AssistantToolResult> {
     prisma.tollEntry.aggregate({
       _sum: { grossAmountCents: true, netAmountCents: true, vatAmountCents: true },
       _count: true,
-      where: { status: { not: TollEntryStatus.PENDING } }
+      where: { status: { in: REPORTABLE_TOLL_ENTRY_STATUSES } }
     }),
     prisma.tollEntry.count({ where: { status: TollEntryStatus.NEEDS_REVIEW } }),
     prisma.tollCard.count(),
     prisma.tollEntry.findMany({
-      where: { status: { not: TollEntryStatus.PENDING } },
+      where: { status: { in: REPORTABLE_TOLL_ENTRY_STATUSES } },
       include: tollEntryInclude,
       orderBy: [{ tollDate: 'desc' }, { tollTime: 'desc' }, { createdAt: 'desc' }],
       take: MAX_ASSISTANT_ROWS
@@ -1125,6 +1193,8 @@ export async function runAssistantTool(toolName: AssistantToolName, args: Assist
       return searchDocuments(args);
     case 'getVehicleChecklist':
       return getVehicleChecklist(args);
+    case 'getTachographUpdateStatus':
+      return getTachographUpdateStatus(args);
     case 'getExpiringSummary':
       return getExpiringSummary(args);
     case 'getMissingPdfSummary':

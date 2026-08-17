@@ -3,6 +3,7 @@ import { z } from 'zod';
 export const assistantToolNames = [
   'searchDocuments',
   'getVehicleChecklist',
+  'getTachographUpdateStatus',
   'getExpiringSummary',
   'getMissingPdfSummary',
   'searchTrips',
@@ -31,6 +32,7 @@ export const assistantWarehouseStatuses = ['IN_STOCK', 'LOW_STOCK', 'OUT_OF_STOC
 export const assistantCostSources = ['TRIPS', 'CONTAINER_TRIPS', 'FUEL', 'TOLLS', 'EXPENSE', 'MAINTENANCE', 'DOCUMENT', 'WAREHOUSE', 'WAREHOUSE_MOUNT'] as const;
 export const assistantRankMetrics = ['spend', 'count', 'consumption', 'costPerKm'] as const;
 export const assistantRankDirections = ['top', 'bottom'] as const;
+export const assistantTachographStatuses = ['documented', 'missing', 'all'] as const;
 
 export type AssistantToolName = (typeof assistantToolNames)[number];
 export type AssistantEntityType = (typeof assistantEntityTypes)[number];
@@ -74,7 +76,8 @@ export const assistantToolArgumentsSchema = z
     includeInternal: z.boolean().optional().nullable(),
     rankMetric: z.enum(assistantRankMetrics).optional().nullable(),
     rankDirection: z.enum(assistantRankDirections).optional().nullable(),
-    plates: z.array(z.string().trim().max(32)).max(6).optional().nullable()
+    plates: z.array(z.string().trim().max(32)).max(6).optional().nullable(),
+    tachographStatus: z.enum(assistantTachographStatuses).optional().nullable()
   })
   .strict();
 
@@ -149,7 +152,12 @@ export const assistantPlanJsonSchema = {
           enum: [...assistantRankDirections, null],
           description: 'top=valore più alto/peggiore o peggiorati; bottom=valore più basso/migliore o migliorati.'
         },
-        plates: { type: ['array', 'null'], items: { type: 'string' }, description: 'Due o più targhe da confrontare.' }
+        plates: { type: ['array', 'null'], items: { type: 'string' }, description: 'Due o più targhe da confrontare.' },
+        tachographStatus: {
+          type: ['string', 'null'],
+          enum: [...assistantTachographStatuses, null],
+          description: 'documented=PDF aggiornamento presente, missing=PDF mancante, all=stato della targa.'
+        }
       }
     },
     clarificationQuestion: {
@@ -163,6 +171,7 @@ export const assistantPlanJsonSchema = {
 const toolDescriptions = [
   'searchDocuments({ plate, documentTypeName, status, withinDays, missingPdf, entityType }) cerca documenti e scadenze filtrate.',
   'getVehicleChecklist({ plate }) controlla documenti inseriti, mancanti e non richiesti per una targa.',
+  'getTachographUpdateStatus({ plate, tachographStatus }) verifica solo i trattori con PDF di aggiornamento tachigrafo documentato oppure mancante.',
   'getExpiringSummary({ withinDays }) riepiloga tutte le scadenze attive entro N giorni.',
   'getMissingPdfSummary() riepiloga documenti attivi senza PDF.',
   'searchTrips({ query, plate, tripStatus, withinDays }) cerca viaggi per targa, numero, autista, punto vendita, prodotto o stato.',
@@ -185,6 +194,15 @@ const toolDescriptions = [
 ].join('\n');
 
 const examples = [
+  {
+    user: 'quali camion hanno l aggiornamento tachigrafo documentato?',
+    json: {
+      action: 'tool_call',
+      toolName: 'getTachographUpdateStatus',
+      arguments: { tachographStatus: 'documented' },
+      clarificationQuestion: null
+    }
+  },
   {
     user: 'fammi vedere assicurazioni in scadenza',
     json: {
@@ -373,6 +391,7 @@ export function buildAssistantPlannerMessages(message: string, history: Assistan
         '',
         'Regole:',
         '- Usa getVehicleChecklist quando la domanda chiede cosa manca su una targa.',
+        '- Usa sempre getTachographUpdateStatus per aggiornamento software/versione tachigrafo, certificazione tachigrafo o codice DTCO1C. Non confonderlo con la revisione periodica cronotachigrafo.',
         '- Usa getMissingPdfSummary per PDF mancanti/senza allegato.',
         '- Usa getExpiringSummary per riepiloghi generali di scadenze senza altri filtri.',
         '- Usa searchDocuments per targa, tipo documento, stato, categoria entita o combinazioni.',
@@ -819,6 +838,23 @@ export function selectAssistantPlanHeuristic(message: string): AssistantPlan {
   // altrimenti i blocchi per-dominio le degraderebbero in semplice ricerca testuale.
   const analyticsPlan = detectFleetAnalyticsPlan(trimmed);
   if (analyticsPlan) return analyticsPlan;
+
+  const tachographUpdateIntent =
+    /(?:aggiornament\w*|software|versione|certificat\w*)\s+(?:del\s+|di\s+)?(?:crono)?tachigraf/i.test(trimmed) ||
+    /(?:crono)?tachigraf\w*\s+(?:aggiornat\w*|software|versione|certificat\w*)/i.test(trimmed) ||
+    /\bdtco\s*1c\b/i.test(trimmed);
+  if (tachographUpdateIntent) {
+    const plate = extractPlate(trimmed);
+    const missing = /\b(manca|mancano|mancanti|senza|non\s+(?:hanno|ha|risulta)|da\s+documentare)\b/i.test(trimmed);
+    return {
+      action: 'tool_call',
+      toolName: 'getTachographUpdateStatus',
+      arguments: {
+        ...(plate ? { plate } : {}),
+        tachographStatus: plate ? 'all' : missing ? 'missing' : 'documented'
+      }
+    };
+  }
 
   const plate = extractPlate(trimmed);
   const withinDays = extractWithinDays(trimmed);

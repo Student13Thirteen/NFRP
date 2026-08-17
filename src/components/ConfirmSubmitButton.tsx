@@ -1,21 +1,16 @@
 'use client';
 
-import type { ReactNode } from 'react';
+import type { ButtonHTMLAttributes, ReactNode } from 'react';
 
-type ConfirmSubmitButtonProps = {
+type ConfirmSubmitButtonProps = Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'children' | 'onClick' | 'type'> & {
   children: ReactNode;
-  className?: string;
-  disabled?: boolean;
   message: string;
-  title?: string;
 };
 
-export function ConfirmSubmitButton({ children, className, disabled, message, title }: ConfirmSubmitButtonProps) {
+export function ConfirmSubmitButton({ children, message, ...buttonProps }: ConfirmSubmitButtonProps) {
   return (
     <button
-      className={className}
-      disabled={disabled}
-      title={title}
+      {...buttonProps}
       type="submit"
       onClick={(event) => {
         if (!window.confirm(message)) {

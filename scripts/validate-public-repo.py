@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -34,12 +35,31 @@ def fail(message: str) -> None:
 
 errors: list[str] = []
 
+
+def repository_files() -> list[Path]:
+    """Return files that Git could publish, including untracked non-ignored files."""
+    try:
+        result = subprocess.run(
+            [
+                'git', '-C', str(ROOT), 'ls-files', '--cached', '--others',
+                '--exclude-standard', '-z'
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except (FileNotFoundError, subprocess.CalledProcessError) as exc:
+        fail(f'cannot enumerate publishable files with Git: {exc}')
+        return []
+
+    return [ROOT / item for item in result.stdout.split('\0') if item]
+
 for item in REQUIRED:
     if not (ROOT / item).exists():
         fail(f'missing required path: {item}')
 
-for path in ROOT.rglob('*'):
-    if not path.is_file():
+for path in repository_files():
+    if not path.exists() or not path.is_file():
         continue
     rel = path.relative_to(ROOT)
     if any(part in IGNORED_PATH_PARTS for part in rel.parts):

@@ -22,17 +22,17 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   try {
     const formData = await request.formData();
     await updateFuelEntryFromForm(id, formData);
-
-    revalidatePath('/fuel');
-    revalidatePath(`/fuel/${id}`);
-    await setFlashMessage({
-      type: 'success',
-      title: 'Rifornimento aggiornato',
-      message: 'Le modifiche sono state salvate e i km della targa sono stati ricalcolati.'
-    });
-    return redirectTo(`/fuel/${id}`);
   } catch (error) {
     console.error('Aggiornamento rifornimento fallito.', error);
     return redirectWithError(`/fuel/${id}`, getFuelActionErrorMessage(error));
   }
+
+  revalidatePath('/fuel');
+  revalidatePath(`/fuel/${id}`);
+  await setFlashMessage({
+    type: 'success',
+    title: 'Rifornimento aggiornato',
+    message: 'Le modifiche sono state salvate e i km della targa sono stati ricalcolati.'
+  });
+  return redirectTo(`/fuel/${id}`);
 }

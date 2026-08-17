@@ -1,8 +1,9 @@
 'use client';
 
 import { Plus, Trash2 } from 'lucide-react';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { TripSelectOption } from '@/lib/trips';
+import { FORM_DRAFT_RESTORE_EVENT, formDraftFromEvent } from '@/lib/form-draft';
 
 export type TripProductRowValue = {
   id?: string;
@@ -46,6 +47,7 @@ function buildInitialRows(defaultRows: TripProductRowValue[] | undefined): Edita
 }
 
 export function TripProductRows({ salesPoints, products, defaultRows, disabled = false }: TripProductRowsProps) {
+  const fieldsetRef = useRef<HTMLDivElement>(null);
   const [rows, setRows] = useState<EditableTripProductRow[]>(() => buildInitialRows(defaultRows));
   const nextKey = useRef(rows.length);
 
@@ -66,8 +68,28 @@ export function TripProductRows({ salesPoints, products, defaultRows, disabled =
     });
   }
 
+  useEffect(() => {
+    const form = fieldsetRef.current?.closest('form');
+    if (!form) return;
+    const restore = (event: Event) => {
+      const values = formDraftFromEvent(event)?.values;
+      if (!values) return;
+      const rowCount = Math.max(values.salesPointId?.length || 0, values.productId?.length || 0, values.liters?.length || 0);
+      if (rowCount === 0) return;
+      setRows(Array.from({ length: rowCount }, (_, index) => ({
+        key: `recovered-${index}`,
+        salesPointId: values.salesPointId?.[index] || '',
+        productId: values.productId?.[index] || '',
+        liters: values.liters?.[index] || ''
+      })));
+      nextKey.current = rowCount;
+    };
+    form.addEventListener(FORM_DRAFT_RESTORE_EVENT, restore);
+    return () => form.removeEventListener(FORM_DRAFT_RESTORE_EVENT, restore);
+  }, []);
+
   return (
-    <div className="trip-product-fieldset">
+    <div className="trip-product-fieldset" ref={fieldsetRef}>
       <div className="trip-product-list">
         {rows.map((row, index) => (
           <div className="trip-product-row" key={row.key}>

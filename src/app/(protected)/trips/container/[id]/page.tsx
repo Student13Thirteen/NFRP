@@ -27,7 +27,7 @@ import {
 } from '@/lib/container-trips';
 import { formatDate, toDateInputValue } from '@/lib/dates';
 import { prisma } from '@/lib/db';
-import { buildDriverOptions, buildTractorOptions, buildTrailerOptions, getDriverLabel, getVehicleLabel } from '@/lib/trips';
+import { buildCustomerOptions, buildDriverOptions, buildTractorOptions, buildTrailerOptions, getDriverLabel, getVehicleLabel } from '@/lib/trips';
 import {
   closeContainerTripAction,
   createContainerExtraAction,
@@ -49,12 +49,13 @@ export default async function ContainerTripDetailPage({ params, searchParams }: 
   await requireUser();
   const { id } = await params;
   const query = await searchParams;
-  const [trip, drivers, tractors, trailers, tariffs] = await Promise.all([
+  const [trip, drivers, tractors, trailers, tariffs, customers] = await Promise.all([
     prisma.containerTrip.findUnique({ where: { id }, include: containerTripInclude }),
     prisma.driver.findMany({ orderBy: [{ active: 'desc' }, { lastName: 'asc' }, { firstName: 'asc' }] }),
     prisma.tractor.findMany({ orderBy: [{ active: 'desc' }, { plate: 'asc' }] }),
     prisma.trailer.findMany({ orderBy: [{ active: 'desc' }, { plate: 'asc' }] }),
-    prisma.containerExtraTariff.findMany({ where: { active: true }, orderBy: [{ kind: 'asc' }, { name: 'asc' }] })
+    prisma.containerExtraTariff.findMany({ where: { active: true }, orderBy: [{ kind: 'asc' }, { name: 'asc' }] }),
+    prisma.customer.findMany({ orderBy: [{ active: 'desc' }, { name: 'asc' }] })
   ]);
   if (!trip) notFound();
 
@@ -178,9 +179,12 @@ export default async function ContainerTripDetailPage({ params, searchParams }: 
         </p>
         <ContainerTripForm
           action={updateContainerTripAction.bind(null, trip.id)}
+          recoveryKey={`container-trip:${trip.id}`}
+          recoverOnError={Boolean(query.error)}
           drivers={buildDriverOptions(drivers)}
           tractors={buildTractorOptions(tractors)}
           trailers={buildTrailerOptions(trailers)}
+          customers={buildCustomerOptions(customers)}
           showStatus
           submitLabel="Salva dati viaggio"
           defaultValues={{
@@ -189,6 +193,7 @@ export default async function ContainerTripDetailPage({ params, searchParams }: 
             billingStatus: trip.billingStatus,
             waybillNumber: trip.waybillNumber,
             waybillDate: toDateInputValue(trip.waybillDate),
+            customerId: trip.customerId,
             customerCode: trip.customerCode,
             customerName: trip.customerName,
             customerReference: trip.customerReference,

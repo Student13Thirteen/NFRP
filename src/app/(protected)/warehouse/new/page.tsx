@@ -48,6 +48,8 @@ export default async function NewWarehousePage({ searchParams }: NewWarehousePag
       <section className="panel">
         <WarehouseForm
           action="/api/warehouse/create"
+          recoveryKey="warehouse:new"
+          recoverOnError={Boolean(resolvedSearchParams.error)}
           categories={buildWarehouseCategoryOptions(categories)}
           suppliers={buildWarehouseSupplierOptions(suppliers)}
           defaultValues={{

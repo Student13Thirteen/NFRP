@@ -1,4 +1,5 @@
 import { requireUser } from '@/lib/auth';
+import { randomUUID } from 'node:crypto';
 import Link from 'next/link';
 import { FuelEntryForm } from '@/components/FuelEntryForm';
 import { PageHeader } from '@/components/PageHeader';
@@ -12,15 +13,19 @@ type FuelNewPageProps = {
 export default async function FuelNewPage({ searchParams }: FuelNewPageProps) {
   await requireUser();
   const resolvedSearchParams = await searchParams;
-  const [tractors, drivers, suppliers, cards, products] = await Promise.all([
-    prisma.tractor.findMany({ include: { assignedDriver: true }, orderBy: [{ active: 'desc' }, { plate: 'asc' }] }),
+  const [tractors, drivers, suppliers, cards, products, driverAssignments] = await Promise.all([
+    prisma.tractor.findMany({ orderBy: [{ active: 'desc' }, { plate: 'asc' }] }),
     prisma.driver.findMany({ orderBy: [{ active: 'desc' }, { lastName: 'asc' }, { firstName: 'asc' }] }),
     prisma.fuelSupplier.findMany({ orderBy: [{ active: 'desc' }, { name: 'asc' }] }),
     prisma.fuelCard.findMany({
       include: { fuelSupplier: true, assignedTractor: true },
       orderBy: [{ active: 'desc' }, { fuelSupplier: { name: 'asc' } }, { cardNumber: 'asc' }]
     }),
-    prisma.fuelProduct.findMany({ where: { active: true }, orderBy: [{ name: 'asc' }, { code: 'asc' }] })
+    prisma.fuelProduct.findMany({ where: { active: true }, orderBy: [{ name: 'asc' }, { code: 'asc' }] }),
+    prisma.tractorDriverAssignment.findMany({
+      include: { driver: { select: { firstName: true, lastName: true } } },
+      orderBy: { validFrom: 'desc' }
+    })
   ]);
   const defaultProduct = products.find((product) => product.code === 'GLS') || products[0];
 
@@ -41,11 +46,19 @@ export default async function FuelNewPage({ searchParams }: FuelNewPageProps) {
       <section className="panel">
         <FuelEntryForm
           action="/api/fuel/create"
+          submissionKey={randomUUID()}
+          recoveryKey="fuel:new"
+          recoverOnError={Boolean(resolvedSearchParams.error)}
           tractors={tractors}
           drivers={drivers}
           suppliers={suppliers}
           cards={cards}
           products={products}
+          driverAssignments={driverAssignments.map((assignment) => ({
+            ...assignment,
+            validFrom: toDateInputValue(assignment.validFrom),
+            validTo: assignment.validTo ? toDateInputValue(assignment.validTo) : null
+          }))}
           submitLabel="Salva rifornimento"
           defaultValues={{
             fuelDate: toDateInputValue(new Date()),

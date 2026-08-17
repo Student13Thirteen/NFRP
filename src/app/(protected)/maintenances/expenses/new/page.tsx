@@ -1,10 +1,13 @@
 import { requireUser } from '@/lib/auth';
+import { randomUUID } from 'node:crypto';
 import Link from 'next/link';
 import { ArrowLeft, ClipboardList, Save } from 'lucide-react';
 import { DatePartsInput } from '@/components/DatePartsInput';
 import { ExpenseLinesEditor } from '@/components/ExpenseLinesEditor';
 import { FileUpload } from '@/components/FileUpload';
 import { PageHeader } from '@/components/PageHeader';
+import { QuickSupplierField } from '@/components/QuickSupplierField';
+import { RecoverableForm } from '@/components/RecoverableForm';
 import { toDateInputValue } from '@/lib/dates';
 import { prisma } from '@/lib/db';
 import { buildAllocationOptions } from '@/lib/expense';
@@ -50,22 +53,20 @@ export default async function NewExpenseDocumentPage({ searchParams }: NewExpens
       <section className="panel">
         {resolvedSearchParams.error ? <p className="form-error">{resolvedSearchParams.error}</p> : null}
 
-        <form action={createExpenseDocumentAction} className="form-stack">
+        <RecoverableForm
+          action={createExpenseDocumentAction}
+          className="form-stack"
+          recoveryKey="expense:new"
+          recoverOnError={Boolean(resolvedSearchParams.error)}
+        >
+          <input name="submissionKey" type="hidden" defaultValue={randomUUID()} />
           <div className="form-section-title">Documento</div>
           <div className="form-grid">
             <DatePartsInput label="Data registrazione" name="registeredAt" defaultValue={toDateInputValue(new Date())} required />
             <DatePartsInput label="Data documento" name="documentDate" />
-            <label>
-              Fornitore / officina
-              <select name="supplierId" defaultValue="">
-                <option value="">Non indicato</option>
-                {suppliers.map((supplier) => (
-                  <option key={supplier.id} value={supplier.id}>
-                    {supplier.name}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <QuickSupplierField
+              options={suppliers.map((supplier) => ({ id: supplier.id, label: supplier.name, active: supplier.active }))}
+            />
             <label>
               Numero documento
               <input name="documentNumber" placeholder="Fattura, DDT o scheda" />
@@ -92,7 +93,7 @@ export default async function NewExpenseDocumentPage({ searchParams }: NewExpens
             <Save size={16} aria-hidden />
             Salva fattura / DDT
           </button>
-        </form>
+        </RecoverableForm>
       </section>
     </>
   );

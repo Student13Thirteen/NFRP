@@ -91,12 +91,12 @@ export default async function NewTripPage({ searchParams }: NewTripPageProps) {
   return (
     <>
       <PageHeader
-        title="Nuovo viaggio"
-        description="Crea il viaggio e genera il PDF A4 per l'autista."
+        title="Nuova consegna carburante"
+        description="Crea una consegna dalla base di carico ai punti vendita e genera il PDF A4 per l'autista."
         action={
           <Link className="secondary-button" href="/trips/settings">
             <Settings2 size={16} aria-hidden />
-            Anagrafiche viaggio
+            Anagrafiche consegne
           </Link>
         }
       />
@@ -105,11 +105,13 @@ export default async function NewTripPage({ searchParams }: NewTripPageProps) {
         {resolvedSearchParams.error ? <p className="form-error">{resolvedSearchParams.error}</p> : null}
         {missingTripRegistry ? (
           <p className="form-error">
-            Inserisci almeno una base di carico, un punto vendita e un prodotto prima di creare un viaggio.
+            Inserisci almeno una base di carico, un punto vendita e un prodotto prima di creare una consegna.
           </p>
         ) : null}
         <TripForm
           action={createTripAction}
+          recoveryKey="trip:new"
+          recoverOnError={Boolean(resolvedSearchParams.error)}
           loadingBases={buildLoadingBaseOptions(loadingBases)}
           salesPoints={buildSalesPointOptions(salesPoints)}
           drivers={buildDriverOptions(drivers)}
@@ -128,7 +130,7 @@ export default async function NewTripPage({ searchParams }: NewTripPageProps) {
             customerName: resolvedSearchParams.customerName,
             carrierName: resolvedSearchParams.carrierName
           }}
-          submitLabel="Salva viaggio"
+          submitLabel="Salva consegna"
           disabled={missingTripRegistry}
         />
       </section>

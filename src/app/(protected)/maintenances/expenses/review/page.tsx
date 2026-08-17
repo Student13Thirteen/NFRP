@@ -4,7 +4,9 @@ import { AlertTriangle, ArrowLeft, CheckCircle2, Download, Trash2 } from 'lucide
 import { ConfirmSubmitButton } from '@/components/ConfirmSubmitButton';
 import { DatePartsInput } from '@/components/DatePartsInput';
 import { ExpenseLinesEditor, type ExpenseLineDefault } from '@/components/ExpenseLinesEditor';
+import { ExpenseReviewSubmitButton } from '@/components/ExpenseReviewSubmitButton';
 import { PageHeader } from '@/components/PageHeader';
+import { RecoverableForm } from '@/components/RecoverableForm';
 import { formatDate, toDateInputValue } from '@/lib/dates';
 import { prisma } from '@/lib/db';
 import {
@@ -12,9 +14,11 @@ import {
   buildAllocationOptions,
   expenseDocumentInclude,
   formatQuantityMilli,
+  getExpenseLineAllocations,
   type ExpenseLineWithRelations
 } from '@/lib/expense';
 import { buildMaintenanceCategoryOptions } from '@/lib/maintenance';
+import { findDatedDriverAssignment } from '@/lib/driver-assignment-core';
 import {
   confirmAllPendingExpensesAction,
   confirmExpenseWithEditsAction,
@@ -38,35 +42,33 @@ function lineToDefault(line: ExpenseLineWithRelations): ExpenseLineDefault {
     unit: line.unit,
     unitPrice: amountInput(line.unitPriceCents),
     vatRate: String(line.vatRatePercent),
-    allocationKey: allocationKeyFor(line),
     categoryId: line.categoryId || '',
-    odometerKm: line.odometerKm === null ? '' : String(line.odometerKm)
+    allocations: getExpenseLineAllocations(line).map((allocation) => ({
+      quantity: formatQuantityMilli(allocation.quantityMilli),
+      allocationKey: allocationKeyFor(allocation),
+      odometerKm: allocation.odometerKm === null ? '' : String(allocation.odometerKm)
+    }))
   };
 }
 
 export default async function ExpensesReviewPage({ searchParams }: ReviewPageProps) {
   await requireUser();
   const resolvedSearchParams = await searchParams;
-  const [documents, categories, tractors, trailers] = await Promise.all([
+  const [documents, categories, tractors, trailers, driverAssignments] = await Promise.all([
     prisma.expenseDocument.findMany({
       where: { status: 'PENDING' },
       include: expenseDocumentInclude,
       orderBy: [{ createdAt: 'asc' }]
     }),
     prisma.category.findMany({ where: { active: true }, orderBy: { name: 'asc' } }),
-    prisma.tractor.findMany({
-      where: { active: true },
-      include: {
-        assignedDriver: {
-          select: { firstName: true, lastName: true }
-        }
-      },
-      orderBy: { plate: 'asc' }
-    }),
-    prisma.trailer.findMany({ where: { active: true }, orderBy: { plate: 'asc' } })
+    prisma.tractor.findMany({ where: { active: true }, orderBy: { plate: 'asc' } }),
+    prisma.trailer.findMany({ where: { active: true }, orderBy: { plate: 'asc' } }),
+    prisma.tractorDriverAssignment.findMany({
+      include: { driver: { select: { firstName: true, lastName: true } } },
+      orderBy: { validFrom: 'desc' }
+    })
   ]);
 
-  const allocations = buildAllocationOptions(tractors, trailers);
   const categoryChoices = buildMaintenanceCategoryOptions(categories);
 
   const totalLines = documents.reduce((sum, doc) => sum + doc.lines.length, 0);
@@ -128,7 +130,18 @@ export default async function ExpensesReviewPage({ searchParams }: ReviewPagePro
             </div>
           </section>
 
-          {documents.map((doc) => (
+          {documents.map((doc) => {
+            const allocationDate = doc.documentDate || doc.registeredAt;
+            const driverLabels = new Map(
+              tractors.flatMap((tractor) => {
+                const assignment = findDatedDriverAssignment(driverAssignments, tractor.id, allocationDate);
+                return assignment
+                  ? [[tractor.id, `${assignment.driver.lastName} ${assignment.driver.firstName}`.trim()] as const]
+                  : [];
+              })
+            );
+            const allocations = buildAllocationOptions(tractors, trailers, driverLabels);
+            return (
             <section className="panel" key={doc.id} style={{ marginBottom: 18 }}>
               <div className="actions-row" style={{ justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
                 <div>
@@ -150,7 +163,7 @@ export default async function ExpensesReviewPage({ searchParams }: ReviewPagePro
                   <form action={deleteExpenseDocumentAction.bind(null, doc.id)}>
                     <ConfirmSubmitButton
                       className="danger-button compact-button"
-                      message="Eliminare questo documento in attesa?"
+                      message="Eliminare definitivamente questo documento, tutte le righe e il PDF allegato? L'operazione non si puo annullare."
                     >
                       <Trash2 size={15} aria-hidden />
                       Elimina
@@ -166,7 +179,13 @@ export default async function ExpensesReviewPage({ searchParams }: ReviewPagePro
                 </p>
               ) : null}
 
-              <form action={confirmExpenseWithEditsAction.bind(null, doc.id)} className="form-stack" style={{ marginTop: 12 }}>
+              <RecoverableForm
+                action={confirmExpenseWithEditsAction.bind(null, doc.id)}
+                className="form-stack"
+                style={{ marginTop: 12 }}
+                recoveryKey={`expense:review:${doc.id}`}
+                recoverOnError={Boolean(resolvedSearchParams.error)}
+              >
                 <div className="expense-review-metadata">
                   <label>
                     Fornitore
@@ -189,17 +208,17 @@ export default async function ExpensesReviewPage({ searchParams }: ReviewPagePro
                   warehouseOrVehicleRequired={doc.source === 'MAINTENANCE_IMPORT'}
                   vehicleAllocationRequired={doc.source === 'LEASE_INVOICE_IMPORT'}
                 />
-                <button className="primary-button" type="submit">
-                  <CheckCircle2 size={16} aria-hidden />
-                  {doc.source === 'MAINTENANCE_IMPORT'
+                <ExpenseReviewSubmitButton
+                  label={doc.source === 'MAINTENANCE_IMPORT'
                     ? 'Valida e registra manutenzione'
                     : doc.source === 'LEASE_INVOICE_IMPORT'
                       ? 'Valida e registra fattura leasing'
                       : 'Conferma documento'}
-                </button>
-              </form>
+                />
+              </RecoverableForm>
             </section>
-          ))}
+            );
+          })}
         </>
       )}
     </>

@@ -1,12 +1,14 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { FORM_DRAFT_RESTORE_EVENT, formDraftFromEvent } from '@/lib/form-draft';
 
 type DatePartsInputProps = {
   label: string;
   name: string;
   defaultValue?: string;
   required?: boolean;
+  onValueChange?: (value: string) => void;
 };
 
 type DateParts = {
@@ -49,7 +51,8 @@ function toIsoDate(parts: DateParts, required: boolean): string {
   return `${parts.year}-${pad(parts.month)}-${pad(parts.day)}`;
 }
 
-export function DatePartsInput({ label, name, defaultValue, required = false }: DatePartsInputProps) {
+export function DatePartsInput({ label, name, defaultValue, required = false, onValueChange }: DatePartsInputProps) {
+  const fieldRef = useRef<HTMLDivElement>(null);
   const yearSelectRef = useRef<HTMLSelectElement>(null);
   const [parts, setParts] = useState<DateParts>(() => parseDefaultValue(defaultValue));
   const isoValue = toIsoDate(parts, required);
@@ -71,8 +74,24 @@ export function DatePartsInput({ label, name, defaultValue, required = false }: 
     yearSelectRef.current?.setCustomValidity(shouldValidate && !isComplete ? 'Seleziona una data valida in formato gg/mm/aaaa.' : '');
   }, [hasAnyValue, isComplete, required]);
 
+  useEffect(() => {
+    onValueChange?.(isoValue);
+  }, [isoValue, onValueChange]);
+
+  useEffect(() => {
+    const form = fieldRef.current?.closest('form');
+    if (!form) return;
+    const restore = (event: Event) => {
+      const draft = formDraftFromEvent(event);
+      const value = draft?.values[name]?.[0];
+      if (value !== undefined) setParts(parseDefaultValue(value));
+    };
+    form.addEventListener(FORM_DRAFT_RESTORE_EVENT, restore);
+    return () => form.removeEventListener(FORM_DRAFT_RESTORE_EVENT, restore);
+  }, [name]);
+
   return (
-    <div className="date-parts-field">
+    <div className="date-parts-field" ref={fieldRef}>
       <span className="field-label">{label}</span>
       <input name={name} type="hidden" value={isoValue} />
       <div className="date-parts" aria-label={`${label} in formato giorno mese anno`}>
