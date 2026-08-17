@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="Interactive product tour of NFRP, a transport operations platform." />
+    <meta name="theme-color" content="#162333" />
+    <title>NFRP — Interactive product tour</title>
+    <link rel="stylesheet" href="styles.css" />
+    <script src="app.js" defer></script>
+  </head>
+  <body>
+    <a class="skip-link" href="#demo">Skip to the product tour</a>
+
+    <header class="site-header">
+      <a class="site-brand" href="#top" aria-label="NFRP, back to the top">
+        <span class="brand-mark" aria-hidden="true">N</span>
+        <span><strong>NFRP</strong><small>Operations Platform</small></span>
+      </a>
+      <nav aria-label="Page navigation">
+        <a href="#demo">Tour</a>
+        <a href="#capabilities">Capabilities</a>
+        <a href="https://github.com/Student13Thirteen/NFRP">GitHub</a>
+      </nav>
+      <span class="demo-pill">Static tour</span>
+    </header>
+
+    <main id="top">
+      <section class="hero" aria-labelledby="hero-title">
+        <div class="hero-copy">
+          <p class="eyebrow">Transport ERP · Human-in-the-loop</p>
+          <h1 id="hero-title">Turn documents into work you can verify.</h1>
+          <p>
+            NFRP connects OCR, records, trips, fleet and costs through controlled workflows.
+            Automation proposes; the operator reviews, corrects and confirms.
+          </p>
+          <div class="hero-actions">
+            <button class="primary-action" id="start-tour" type="button">Try the OCR workflow</button>
+            <a class="secondary-action" href="https://github.com/Student13Thirteen/NFRP">Explore the code</a>
+          </div>
+          <ul class="proof-list" aria-label="Caratteristiche principali">
+            <li>Self-hosted</li>
+            <li>Synthetic demo data</li>
+            <li>Human review required</li>
+          </ul>
+        </div>
+
+        <div class="workflow-card" aria-label="Document acquisition workflow">
+          <p class="eyebrow">One predictable path</p>
+          <ol>
+            <li><span>1</span><div><strong>Acquire</strong><small>PDF, CSV or manual entry</small></div></li>
+            <li><span>2</span><div><strong>Propose</strong><small>Extraction, checks and matching</small></div></li>
+            <li><span>3</span><div><strong>Review</strong><small>Correct before saving</small></div></li>
+            <li><span>4</span><div><strong>Confirm</strong><small>Traceable record and consistent costs</small></div></li>
+          </ol>
+        </div>
+      </section>
+
+      <section class="demo-section" id="demo" aria-labelledby="demo-title">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Interactive tour</p>
+            <h2 id="demo-title">A faithful preview of the workflow</h2>
+          </div>
+          <p>It uses synthetic browser data only. It uploads nothing and calls no external services.</p>
+        </div>
+
+        <div class="erp-frame">
+          <aside class="erp-sidebar" aria-label="Product tour sections">
+            <div class="erp-logo"><span>N</span><div><strong>NFRP</strong><small>Demo Logistics</small></div></div>
+            <div class="nav-label">Operations</div>
+            <button class="erp-nav is-active" type="button" data-view="dashboard" aria-pressed="true">
+              <span aria-hidden="true">◫</span> Overview
+            </button>
+            <button class="erp-nav" type="button" data-view="acquire" aria-pressed="false">
+              <span aria-hidden="true">＋</span> Acquire <b>3</b>
+            </button>
+            <button class="erp-nav" type="button" data-view="trips" aria-pressed="false">
+              <span aria-hidden="true">↗</span> Trips
+            </button>
+            <div class="nav-label">Control</div>
+            <button class="erp-nav" type="button" data-view="fleet" aria-pressed="false">
+              <span aria-hidden="true">▱</span> Fleet
+            </button>
+            <button class="erp-nav" type="button" data-view="costs" aria-pressed="false">
+              <span aria-hidden="true">€</span> Cost center
+            </button>
+          </aside>
+
+          <div class="erp-workspace">
+            <div class="erp-topbar">
+              <div><span class="context-label">NFRP /</span> <strong id="view-context">Overview</strong></div>
+              <div class="operator"><span>Demo operator</span><i aria-hidden="true">DO</i></div>
+            </div>
+
+            <div class="erp-content" id="erp-content">
+              <section class="demo-view is-visible" data-panel="dashboard" aria-labelledby="dashboard-title">
+                <div class="view-heading">
+                  <div><h3 id="dashboard-title">Operations overview</h3><p>Work that needs attention, without searching through menus.</p></div>
+                  <button class="compact-action" type="button" data-open-acquire>Acquire a document</button>
+                </div>
+
+                <div class="metric-grid">
+                  <article><span class="metric-icon blue">↥</span><div><small>Needs review</small><strong>3</strong><em>2 documents · 1 trip sheet</em></div></article>
+                  <article><span class="metric-icon amber">!</span><div><small>Due in 30 days</small><strong>6</strong><em>Open document checks</em></div></article>
+                  <article><span class="metric-icon green">✓</span><div><small>Closed trips</small><strong id="closed-trips">18</strong><em>August 2026</em></div></article>
+                  <article><span class="metric-icon violet">€</span><div><small>Allocated costs</small><strong>94%</strong><em>Confirmed records only</em></div></article>
+                </div>
+
+                <div class="dashboard-grid">
+                  <article class="panel-card">
+                    <div class="panel-title"><div><h4>Do today</h4><p>Sorted by operational impact</p></div><span>3 tasks</span></div>
+                    <button class="task-row" type="button" data-open-acquire><i class="dot blue"></i><div><strong>Review trip sheet</strong><small>Check the suggested driver</small></div><b>Open →</b></button>
+                    <button class="task-row" type="button" data-tour-note="The complete app opens a list already filtered to documents that are about to expire."><i class="dot amber"></i><div><strong>6 documents expiring</strong><small>Operational vehicles in the next 30 days</small></div><b>Check →</b></button>
+                    <button class="task-row" type="button" data-tour-note="The complete app opens the queue of invoices that still need review and allocation."><i class="dot violet"></i><div><strong>2 invoices to allocate</strong><small>Split lines between vehicles and warehouse</small></div><b>Review →</b></button>
+                  </article>
+                  <article class="panel-card quiet-card">
+                    <div class="panel-title"><div><h4>Frequent actions</h4><p>Start from the result you need</p></div></div>
+                    <div class="quick-grid">
+                      <button type="button" data-open-acquire><span>▣</span>Import trip sheet</button>
+                      <button type="button" data-tour-note="The complete form manages customer, container, routes, driver and vehicle."><span>▱</span>New transport</button>
+                      <button type="button" data-tour-note="The complete form records fuel and allocates it to the correct vehicle."><span>⛽</span>New fuel entry</button>
+                      <button type="button" data-tour-note="The complete app acquires the invoice, proposes its lines and asks for confirmation."><span>€</span>Record invoice</button>
+                    </div>
+                  </article>
+                </div>
+              </section>
+
+              <section class="demo-view" data-panel="acquire" aria-labelledby="acquire-title">
+                <div class="view-heading">
+                  <div><h3 id="acquire-title">Import trip sheets</h3><p>The trip is created only after your review.</p></div>
+                  <button class="ghost-action" id="reset-demo" type="button">Start again</button>
+                </div>
+
+                <ol class="stepper" aria-label="Import progress">
+                  <li class="is-current" data-step="1"><span>1</span><div><strong>Upload</strong><small>PDF</small></div></li>
+                  <li data-step="2"><span>2</span><div><strong>Analyze</strong><small>OCR</small></div></li>
+                  <li data-step="3"><span>3</span><div><strong>Review</strong><small>Operator</small></div></li>
+                  <li data-step="4"><span>4</span><div><strong>Save</strong><small>Trip</small></div></li>
+                </ol>
+
+                <div class="upload-panel" id="upload-panel">
+                  <span class="upload-icon" aria-hidden="true">PDF</span>
+                  <h4>Synthetic trip sheet</h4>
+                  <p>Simulate the upload of <strong>TRIP-SHEET-DEMO-001.pdf</strong>.</p>
+                  <button class="primary-action" id="simulate-upload" type="button">Analyze the demo PDF</button>
+                  <small>No file is transferred. The tour uses a prepared synthetic OCR result.</small>
+                </div>
+
+                <div class="review-panel" id="review-panel" hidden>
+                  <div class="review-banner"><span>✓</span><div><strong>Analysis complete</strong><small>Check the proposed fields before creating the trip.</small></div><em>High confidence</em></div>
+                  <div class="document-row">
+                      <div class="pdf-preview" aria-hidden="true"><span>TRIP SHEET</span><b>DEMO</b><i>001</i></div>
+                    <div class="extracted-data">
+                      <div class="field-grid">
+                        <label>Trip sheet number<input value="DEMO-001" readonly /></label>
+                        <label>Date<input value="17/08/2026" readonly /></label>
+                        <label>Customer<input value="Demo Customer Ltd." readonly /></label>
+                        <label>Plate<input value="ZZ101ZZ" readonly /></label>
+                        <label class="wide-field">Driver read by OCR<input value="ANDREW" readonly /></label>
+                        <label class="wide-field suggested-field">Driver to review
+                          <select id="driver-select">
+                            <option value="andrea" selected>Andrew Green — most likely match</option>
+                            <option value="marco">Mark White</option>
+                            <option value="none">No driver</option>
+                          </select>
+                          <small>Matched on first and last name. Your choice always wins.</small>
+                        </label>
+                      </div>
+                      <div class="review-actions">
+                        <span><b>0</b> blocking fields</span>
+                        <button class="primary-action" id="confirm-trip" type="button">Confirm and create trip</button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="success-panel" id="success-panel" hidden tabindex="-1">
+                  <span aria-hidden="true">✓</span>
+                  <div><p class="eyebrow">Trip saved</p><h4>Transport #DEMO-019 created</h4><p id="success-copy">Driver Andrew Green assigned. The trip remains planned and editable.</p></div>
+                  <button class="secondary-action" type="button" data-view-target="trips">Open the trip</button>
+                </div>
+                <p class="sr-only" id="demo-live" aria-live="polite"></p>
+              </section>
+
+              <section class="demo-view" data-panel="trips" aria-labelledby="trips-title">
+                <div class="view-heading"><div><h3 id="trips-title">Trips</h3><p>Fuel deliveries and container transports remain separate workflows.</p></div><button class="compact-action" type="button" data-open-acquire>Import trip sheets</button></div>
+                <div class="table-card">
+                  <div class="table-tools"><strong>Container transports</strong><input id="trip-search" aria-label="Search trips" placeholder="Trip sheet, customer, plate or driver" /></div>
+                  <div class="record-row is-highlighted" data-trip-record><div><small>#DEMO-019 · 17/08/2026</small><strong>Demo Customer Ltd.</strong></div><div><small>Driver</small><strong id="trip-driver">Andrew Green</strong></div><div><small>Vehicle</small><strong>ZZ101ZZ</strong></div><span class="status planned">Planned</span></div>
+                  <div class="record-row" data-trip-record><div><small>#DEMO-018 · 16/08/2026</small><strong>Acme Retail Demo</strong></div><div><small>Driver</small><strong>Mark White</strong></div><div><small>Vehicle</small><strong>ZZ102ZZ</strong></div><span class="status ready">Ready to invoice</span></div>
+                </div>
+              </section>
+
+              <section class="demo-view" data-panel="fleet" aria-labelledby="fleet-title">
+                <div class="view-heading"><div><h3 id="fleet-title">Fleet</h3><p>People, vehicles and dated history in one clear path.</p></div><button class="compact-action" type="button" data-tour-note="The complete app opens the new tractor record.">New tractor</button></div>
+                <div class="fleet-grid">
+                  <article class="entity-card"><span class="entity-avatar">ZZ</span><div><small>Operational tractor</small><h4>ZZ101ZZ</h4><p>Volvo FH · Driver today: Andrew Green</p><button class="text-action" type="button" data-tour-note="The complete record shows and edits dated driver assignments.">Open assignments →</button></div></article>
+                  <article class="entity-card"><span class="entity-avatar person">AG</span><div><small>Active driver</small><h4>Andrew Green</h4><p>Vehicle today: ZZ101ZZ · employed since 15/01/2024</p><button class="text-action" type="button" data-tour-note="The complete record connects employment history and assigned vehicles without duplicate editors.">Open history →</button></div></article>
+                </div>
+              </section>
+
+              <section class="demo-view" data-panel="costs" aria-labelledby="costs-title">
+                <div class="view-heading"><div><h3 id="costs-title">Cost center</h3><p>Confirmed records only, with the current scope always visible.</p></div><button class="compact-action" type="button" data-tour-note="The complete app creates a PDF report with the selected filters and scope.">Export PDF</button></div>
+                <div class="scope-bar"><div><small>Period</small><strong>August 2026</strong></div><div><small>Scope</small><strong>Entire fleet</strong></div><div><small>View</small><strong>By source</strong></div></div>
+                <div class="cost-layout"><article class="cost-chart"><h4>Cost distribution</h4><div class="bar-row"><span>Fuel</span><i style="--value: 78%"></i><b>€ 12,480</b></div><div class="bar-row"><span>Tolls</span><i style="--value: 51%"></i><b>€ 8,140</b></div><div class="bar-row"><span>Maintenance</span><i style="--value: 34%"></i><b>€ 5,320</b></div><div class="bar-row"><span>Leasing</span><i style="--value: 28%"></i><b>€ 4,400</b></div></article><article class="cost-total"><small>Confirmed total</small><strong>€ 30,340</strong><p>Drafts, discarded records and open trips remain excluded.</p></article></div>
+              </section>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="capabilities" id="capabilities" aria-labelledby="capabilities-title">
+        <div class="section-heading"><div><p class="eyebrow">Behind the interface</p><h2 id="capabilities-title">Controls designed for real work</h2></div><p>The tour is static. The repository contains the complete server application.</p></div>
+        <div class="capability-grid">
+          <article><span>01</span><h3>Proposals, not shortcuts</h3><p>OCR and matching help fill fields, but critical data stays in review until a person confirms it.</p></article>
+          <article><span>02</span><h3>Recoverable mistakes</h3><p>Restorable forms, idempotent submissions and reversible discards reduce the cost of an operator error.</p></article>
+          <article><span>03</span><h3>Consistent history</h3><p>Dated assignments and linked records preserve who drove each vehicle on the day of the operation.</p></article>
+          <article><span>04</span><h3>A clear public boundary</h3><p>Code and demo data are public. Documents, credentials and operational configuration are not.</p></article>
+        </div>
+      </section>
+    </main>
+
+    <footer><div><strong>NFRP</strong><span>Open-source transport operations reference</span></div><a href="https://github.com/Student13Thirteen/NFRP">GitHub repository →</a></footer>
+    <div class="tour-toast" id="tour-toast" role="status" aria-live="polite" hidden></div>
+  </body>
+</html>
