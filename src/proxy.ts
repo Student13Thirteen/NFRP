@@ -8,6 +8,7 @@ import {
 const PROTECTED_PAGE_PREFIXES = [
   '/acquisitions',
   '/costs',
+  '/customers',
   '/dashboard',
   '/documents',
   '/drivers',
@@ -69,6 +70,7 @@ export const config = {
   matcher: [
     '/acquisitions/:path*',
     '/costs/:path*',
+    '/customers/:path*',
     '/dashboard/:path*',
     '/documents/:path*',
     '/drivers/:path*',

@@ -9,8 +9,8 @@ import { formatTollMoney } from '@/lib/tolls';
 import {
   confirmAllPendingTollsReviewAction,
   confirmTollBatchReviewAction,
-  deleteAllPendingTollsReviewAction,
-  deleteTollBatchReviewAction
+  discardAllPendingTollsReviewAction,
+  discardTollBatchReviewAction
 } from '../actions';
 
 function formatPeriod(from: Date | null, to: Date | null): string {
@@ -58,8 +58,8 @@ export default async function TollImportReviewPage() {
                 Conferma tutti
               </ConfirmSubmitButton>
             </form>
-            <form action={deleteAllPendingTollsReviewAction}>
-              <ConfirmSubmitButton className="danger-button" message={`Scartare tutti i ${pendingRows} pedaggi in attesa?`}>
+            <form action={discardAllPendingTollsReviewAction}>
+              <ConfirmSubmitButton className="secondary-button" message={`Spostare tutti i ${pendingRows} pedaggi nello storico degli scartati? Potrai ripristinarli dalle schede dei file.`}>
                 <Trash2 size={16} aria-hidden />
                 Scarta tutti
               </ConfirmSubmitButton>
@@ -132,8 +132,12 @@ export default async function TollImportReviewPage() {
                           Conferma
                         </ConfirmSubmitButton>
                       </form>
-                      <form action={deleteTollBatchReviewAction.bind(null, batch.id)}>
-                        <ConfirmSubmitButton className="danger-button compact-button" message={`Scartare i ${batch.pendingCount} pedaggi di questo file?`}>
+                      <form action={discardTollBatchReviewAction.bind(null, batch.id)}>
+                        <ConfirmSubmitButton
+                          aria-label={`Scarta i ${batch.pendingCount} pedaggi di ${batch.invoiceNumber || batch.originalFileName}`}
+                          className="secondary-button compact-button"
+                          message={`Spostare i ${batch.pendingCount} pedaggi di questo file nello storico? Potrai ripristinarli.`}
+                        >
                           <Trash2 size={14} aria-hidden />
                         </ConfirmSubmitButton>
                       </form>

@@ -49,7 +49,7 @@ describe('trip PDF generation', () => {
       driver: {
         id: 'driver-1',
         firstName: 'Nicola',
-        lastName: 'Longobardo',
+        lastName: 'Verdi',
         phone: null,
         email: null,
         notes: null,

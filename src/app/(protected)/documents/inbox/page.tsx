@@ -1,7 +1,7 @@
 import { requireUser } from '@/lib/auth';
 import { DocumentInboxStatus, DocumentStatus, EntityType } from '@prisma/client';
 import Link from 'next/link';
-import { Check, CheckCircle2, FileSearch, Info, Loader2, Plus, Trash2, Wand2 } from 'lucide-react';
+import { ArrowLeft, Check, CheckCircle2, FileSearch, Info, Loader2, Plus, Trash2, Wand2 } from 'lucide-react';
 import { ConfirmSubmitButton } from '@/components/ConfirmSubmitButton';
 import { InboxAutoRefresh } from '@/components/InboxAutoRefresh';
 import { InboxBulkValidateButton } from '@/components/InboxBulkValidateButton';
@@ -151,10 +151,16 @@ export default async function DocumentInboxPage({ searchParams }: InboxPageProps
         title="Inbox documenti"
         description="Carica PDF non classificati; i fascicoli con documenti distinti vengono riconosciuti e separati automaticamente."
         action={
-          <Link className="secondary-button" href="/documents/new">
-            <Plus size={16} aria-hidden />
-            Inserimento manuale
-          </Link>
+          <div className="actions-row">
+            <Link className="secondary-button" href="/acquisitions">
+              <ArrowLeft size={16} aria-hidden />
+              Torna ad Acquisizioni
+            </Link>
+            <Link className="secondary-button" href="/documents/new">
+              <Plus size={16} aria-hidden />
+              Inserimento manuale
+            </Link>
+          </div>
         }
       />
 

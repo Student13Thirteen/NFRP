@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   allocationKeyFor,
+  allocateExpenseLineAmounts,
   buildAllocationOptions,
   computeLineVat,
   filterAndSortExpenseDocuments,
@@ -77,6 +78,19 @@ describe('sumDocumentTotals', () => {
   });
 });
 
+describe('allocateExpenseLineAmounts', () => {
+  it('ripartisce quantità, netto e IVA senza perdere centesimi', () => {
+    const shares = allocateExpenseLineAmounts(
+      { imponibileCents: 1999, vatCents: 440, totalCents: 2439 },
+      [{ quantityMilli: 1000 }, { quantityMilli: 1000 }, { quantityMilli: 1000 }]
+    );
+
+    expect(shares.map((share) => share.imponibileCents)).toEqual([667, 666, 666]);
+    expect(shares.map((share) => share.vatCents)).toEqual([147, 147, 146]);
+    expect(shares.reduce((sum, share) => sum + share.totalCents, 0)).toBe(2439);
+  });
+});
+
 describe('parseAllocationKey / allocationKeyFor', () => {
   it('riconosce trattore, semirimorchio, magazzino e generico', () => {
     expect(parseAllocationKey('TRACTOR:abc')).toEqual({ kind: 'TRACTOR', id: 'abc' });
@@ -96,7 +110,7 @@ describe('parseAllocationKey / allocationKeyFor', () => {
 });
 
 describe('buildAllocationOptions', () => {
-  it('mostra l’autista associato accanto alla targa senza assegnarlo automaticamente', () => {
+  it('mostra l’autista valido alla data accanto alla targa senza assegnarlo automaticamente', () => {
     const options = buildAllocationOptions(
       [
         {
@@ -104,11 +118,11 @@ describe('buildAllocationOptions', () => {
           plate: 'ZZ102ZZ',
           brand: 'Volvo',
           model: null,
-          active: true,
-          assignedDriver: { firstName: 'Mario', lastName: 'Rossi' }
+          active: true
         }
       ],
-      []
+      [],
+      new Map([['tractor-1', 'Rossi Mario']])
     );
 
     expect(options.find((option) => option.value === 'TRACTOR:tractor-1')?.label).toBe(
@@ -137,7 +151,7 @@ describe('registro fatture e DDT', () => {
       sourcePage: null,
       sourcePageCount: null,
       supplierId: null,
-      supplierName: 'Ricambi Demo Delta',
+      supplierName: 'RICAMBI DEMO DELTA',
       leaseContractId: null,
       documentNumber: input.id,
       documentDate: new Date(input.registeredAt),
@@ -183,9 +197,7 @@ describe('registro fatture e DDT', () => {
             plate: input.plate,
             brand: null,
             model: null,
-            year: null,
-            chassisNumber: null,
-            note: null,
+            notes: null,
             active: true,
             assignedDriverId: null,
             lifecycleStatus: 'ACTIVE',
@@ -194,7 +206,8 @@ describe('registro fatture e DDT', () => {
             updatedAt: createdAt
           },
           trailer: null,
-          warehouseItem: null
+          warehouseItem: null,
+          allocations: []
         }
       ]
     };

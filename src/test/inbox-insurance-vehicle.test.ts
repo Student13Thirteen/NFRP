@@ -74,6 +74,7 @@ describe('insurance vehicle detection', () => {
           name: 'Assicurazione Trattore',
           suggestedEntityType: EntityType.TRACTOR,
           defaultNoticeDays: 30,
+          expiryRequired: true,
           active: true,
           createdAt: new Date('2026-01-01T00:00:00Z'),
           updatedAt: new Date('2026-01-01T00:00:00Z')
@@ -83,6 +84,7 @@ describe('insurance vehicle detection', () => {
           name: 'Assicurazione Semirimorchio',
           suggestedEntityType: EntityType.TRAILER,
           defaultNoticeDays: 30,
+          expiryRequired: true,
           active: true,
           createdAt: new Date('2026-01-01T00:00:00Z'),
           updatedAt: new Date('2026-01-01T00:00:00Z')
@@ -141,6 +143,7 @@ describe('insurance vehicle detection', () => {
           name: 'Assicurazione Trattore',
           suggestedEntityType: EntityType.TRACTOR,
           defaultNoticeDays: 30,
+          expiryRequired: true,
           active: true,
           createdAt: new Date('2026-01-01T00:00:00Z'),
           updatedAt: new Date('2026-01-01T00:00:00Z')
@@ -150,6 +153,7 @@ describe('insurance vehicle detection', () => {
           name: 'Assicurazione Semirimorchio',
           suggestedEntityType: EntityType.TRAILER,
           defaultNoticeDays: 30,
+          expiryRequired: true,
           active: true,
           createdAt: new Date('2026-01-01T00:00:00Z'),
           updatedAt: new Date('2026-01-01T00:00:00Z')

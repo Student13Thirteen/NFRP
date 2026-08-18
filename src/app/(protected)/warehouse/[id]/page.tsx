@@ -188,6 +188,8 @@ export default async function WarehouseDetailPage({ params, searchParams }: Ware
           <h2>Modifica record</h2>
           <WarehouseForm
             action={`/api/warehouse/${item.id}/update`}
+            recoveryKey={`warehouse:${item.id}`}
+            recoverOnError={Boolean(resolvedSearchParams.error)}
             categories={buildWarehouseCategoryOptions(categories)}
             suppliers={buildWarehouseSupplierOptions(suppliers)}
             defaultValues={{

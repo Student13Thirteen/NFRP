@@ -5,6 +5,8 @@ export type TollBatchState = 'pending' | 'needs_review' | 'confirmed' | 'discard
 
 export type TollBatchSummary = TollImportBatch & {
   confirmedCount: number;
+  discardedCount: number;
+  discardedGrossCents: number;
   distanceKm: number;
   entryCount: number;
   firstTollDate: Date | null;
@@ -20,9 +22,12 @@ type TollBatchSummaryOptions = {
   pendingOnly?: boolean;
 };
 
-export function getTollBatchState(batch: Pick<TollBatchSummary, 'entryCount' | 'pendingCount' | 'reviewCount'>): TollBatchState {
+export function getTollBatchState(
+  batch: Pick<TollBatchSummary, 'confirmedCount' | 'entryCount' | 'pendingCount' | 'reviewCount'>
+): TollBatchState {
   if (batch.entryCount === 0) return 'discarded';
   if (batch.pendingCount > 0) return 'pending';
+  if (batch.confirmedCount === 0) return 'discarded';
   if (batch.reviewCount > 0) return 'needs_review';
   return 'confirmed';
 }
@@ -65,6 +70,9 @@ export async function getTollBatchSummaries(options: TollBatchSummaryOptions = {
     importBatchId: { not: null },
     ...(options.pendingOnly ? { status: TollEntryStatus.PENDING } : {})
   } as const;
+  const reviewEntryWhere = options.pendingOnly
+    ? { importBatchId: { not: null }, status: TollEntryStatus.PENDING, reviewReasons: { not: null } }
+    : { importBatchId: { not: null }, status: { not: TollEntryStatus.DISCARDED }, reviewReasons: { not: null } };
 
   const [batches, totals, statusCounts, reviewCounts] = await Promise.all([
     prisma.tollImportBatch.findMany({ orderBy: [{ invoiceDate: 'desc' }, { createdAt: 'desc' }] }),
@@ -79,11 +87,12 @@ export async function getTollBatchSummaries(options: TollBatchSummaryOptions = {
     prisma.tollEntry.groupBy({
       by: ['importBatchId', 'status'],
       where: entryWhere,
-      _count: { _all: true }
+      _count: { _all: true },
+      _sum: { grossAmountCents: true }
     }),
     prisma.tollEntry.groupBy({
       by: ['importBatchId'],
-      where: { ...entryWhere, reviewReasons: { not: null } },
+      where: reviewEntryWhere,
       _count: { _all: true }
     })
   ]);
@@ -91,11 +100,15 @@ export async function getTollBatchSummaries(options: TollBatchSummaryOptions = {
   const totalsByBatch = new Map(totals.map((total) => [total.importBatchId, total]));
   const reviewByBatch = new Map(reviewCounts.map((count) => [count.importBatchId, count._count._all]));
   const statusByBatch = new Map<string, Map<TollEntryStatus, number>>();
+  const discardedGrossByBatch = new Map<string, number>();
   for (const statusCount of statusCounts) {
     if (!statusCount.importBatchId) continue;
     const counts = statusByBatch.get(statusCount.importBatchId) || new Map<TollEntryStatus, number>();
     counts.set(statusCount.status, statusCount._count._all);
     statusByBatch.set(statusCount.importBatchId, counts);
+    if (statusCount.status === TollEntryStatus.DISCARDED) {
+      discardedGrossByBatch.set(statusCount.importBatchId, statusCount._sum.grossAmountCents || 0);
+    }
   }
 
   return batches
@@ -108,6 +121,8 @@ export async function getTollBatchSummaries(options: TollBatchSummaryOptions = {
           (counts?.get(TollEntryStatus.OK) || 0) +
           (counts?.get(TollEntryStatus.VERIFIED) || 0) +
           (counts?.get(TollEntryStatus.NEEDS_REVIEW) || 0),
+        discardedCount: counts?.get(TollEntryStatus.DISCARDED) || 0,
+        discardedGrossCents: discardedGrossByBatch.get(batch.id) || 0,
         distanceKm: total?._sum.distanceKm || 0,
         entryCount: total?._count._all || 0,
         firstTollDate: total?._min.tollDate || null,

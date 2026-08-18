@@ -4,7 +4,7 @@ import { CircleCheckBig, CircleMinus, Download, FilePlus2, FileWarning, RotateCc
 import { ConfirmSubmitButton } from '@/components/ConfirmSubmitButton';
 import { excludeChecklistDocumentAction, restoreChecklistDocumentAction } from '@/lib/document-checklist-actions';
 import { type DocumentChecklist as DocumentChecklistData } from '@/lib/document-checklist';
-import { formatDate } from '@/lib/dates';
+import { formatExpiryDate } from '@/lib/dates';
 
 type DocumentChecklistProps = {
   checklist: DocumentChecklistData;
@@ -60,7 +60,7 @@ export function DocumentChecklist({ checklist, entityType, entityId }: DocumentC
                     {item.status === 'inserted' ? (
                       <>
                         {item.insertedCount === 1 ? '1 inserito' : `${item.insertedCount} inseriti`}
-                        {item.latestDocument ? ` - scadenza ${formatDate(item.latestDocument.expiryDate)}` : null}
+                        {item.latestDocument ? ` - ${item.latestDocument.expiryDate ? `scadenza ${formatExpiryDate(item.latestDocument.expiryDate)}` : 'senza scadenza'}` : null}
                       </>
                     ) : null}
                     {item.status === 'missing' ? 'Mancante' : null}
@@ -69,7 +69,7 @@ export function DocumentChecklist({ checklist, entityType, entityId }: DocumentC
                   {item.status === 'inserted' && item.latestDocument && !item.latestDocument.hasFile ? (
                     <div className="checklist-note missing-pdf">
                       <FileWarning size={14} aria-hidden />
-                      Scadenza inserita, PDF da allegare appena disponibile.
+                      Documento inserito, PDF da allegare appena disponibile.
                     </div>
                   ) : null}
                 </div>

@@ -105,6 +105,12 @@ load_env() {
 profile_args() {
   local mode="${DEPLOYMENT_MODE:-local}"
   [[ "$mode" == "remote" ]] && printf '%s\n' '--profile' 'remote'
+  case "${DOCUMENT_MIRROR_ENABLED:-false},${TELEGRAM_NOTIFICATIONS_ENABLED:-false}" in
+    *true*|*TRUE*|*yes*|*YES*|*on*|*ON*|*1*) printf '%s\n' '--profile' 'integrations' ;;
+  esac
+  case "${ASSISTANT_ENABLED:-false}" in
+    true|TRUE|yes|YES|on|ON|1) printf '%s\n' '--profile' 'assistant' ;;
+  esac
 }
 
 compose() {

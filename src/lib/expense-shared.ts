@@ -11,6 +11,18 @@ export type LineComputation = {
   totalCents: number;
 };
 
+export type ExpenseAllocationShare = {
+  quantityMilli: number;
+  allocationType: AllocationKind;
+  tractorId: string | null;
+  trailerId: string | null;
+  odometerKm?: number | null;
+};
+
+export type ExpenseAllocationAmounts = LineComputation & {
+  quantityMilli: number;
+};
+
 /** IVA e totale a partire dall'imponibile (in centesimi) e dall'aliquota (intero, es. 22). */
 export function computeLineVat(imponibileCents: number, vatRatePercent: number): LineComputation {
   const safeImponibile = Math.max(0, Math.round(imponibileCents));
@@ -29,6 +41,42 @@ export function imponibileCentsFromTotal(totalCents: number, vatRatePercent: num
 /** Imponibile riga da quantità (×1000) e prezzo unitario netto (centesimi). */
 export function imponibileCentsFromUnit(quantityMilli: number, unitPriceCents: number): number {
   return Math.round((Math.max(0, quantityMilli) * Math.max(0, unitPriceCents)) / 1000);
+}
+
+function distributeCents(totalCents: number, quantities: number[]): number[] {
+  const safeTotal = Math.max(0, Math.round(totalCents));
+  const totalQuantity = quantities.reduce((sum, value) => sum + Math.max(0, value), 0);
+  if (totalQuantity <= 0) return quantities.map(() => 0);
+
+  const exact = quantities.map((value) => (safeTotal * Math.max(0, value)) / totalQuantity);
+  const distributed = exact.map(Math.floor);
+  let remainder = safeTotal - distributed.reduce((sum, value) => sum + value, 0);
+  const byRemainder = exact
+    .map((value, index) => ({ index, fraction: value - Math.floor(value) }))
+    .sort((left, right) => right.fraction - left.fraction || left.index - right.index);
+
+  for (let index = 0; index < byRemainder.length && remainder > 0; index += 1) {
+    distributed[byRemainder[index].index] += 1;
+    remainder -= 1;
+  }
+  return distributed;
+}
+
+/** Ripartisce netto e IVA al centesimo senza cambiare il totale contabile della riga. */
+export function allocateExpenseLineAmounts(
+  line: Pick<LineComputation, 'imponibileCents' | 'vatCents' | 'totalCents'>,
+  allocations: Array<Pick<ExpenseAllocationShare, 'quantityMilli'>>
+): ExpenseAllocationAmounts[] {
+  const quantities = allocations.map((allocation) => Math.max(0, Math.round(allocation.quantityMilli)));
+  const imponibili = distributeCents(line.imponibileCents, quantities);
+  const vat = distributeCents(line.vatCents, quantities);
+
+  return quantities.map((quantityMilli, index) => ({
+    quantityMilli,
+    imponibileCents: imponibili[index],
+    vatCents: vat[index],
+    totalCents: imponibili[index] + vat[index]
+  }));
 }
 
 export function formatEuroCents(value: number | null | undefined): string {

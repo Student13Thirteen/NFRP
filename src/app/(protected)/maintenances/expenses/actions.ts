@@ -38,6 +38,10 @@ function logExpenseError(message: string, error: unknown) {
   console.error(message, error instanceof Error ? { message: error.message, stack: error.stack } : { error });
 }
 
+function isAlreadyConfirmedExpense(error: unknown): boolean {
+  return error instanceof Error && error.message === 'Il documento è già stato confermato.';
+}
+
 export async function createExpenseDocumentAction(formData: FormData) {
   await requireUser();
   let pending = false;
@@ -62,15 +66,30 @@ export async function createExpenseDocumentAction(formData: FormData) {
 
 export async function confirmExpenseWithEditsAction(documentId: string, formData: FormData) {
   await requireUser();
+  let alreadyConfirmed = false;
   try {
     await updateExpenseDocumentLines(documentId, formData);
     await confirmExpenseDocument(documentId);
   } catch (error) {
-    logExpenseError('Conferma documento di spesa fallita.', error);
-    redirectWithError(REVIEW_PATH, getExpenseActionErrorMessage(error));
+    // Un retry arrivato da una scheda ormai stale non e un errore operativo:
+    // il primo invio ha gia raggiunto esattamente il risultato richiesto.
+    if (isAlreadyConfirmedExpense(error)) {
+      alreadyConfirmed = true;
+    } else {
+      logExpenseError('Conferma documento di spesa fallita.', error);
+      redirectWithError(REVIEW_PATH, getExpenseActionErrorMessage(error));
+    }
   }
 
   revalidateExpenseViews();
+  if (alreadyConfirmed) {
+    await setFlashMessage({
+      type: 'info',
+      title: 'Documento già confermato',
+      message: 'Un altro invio aveva già confermato il documento: le modifiche di questa scheda non sono state applicate.'
+    });
+    redirect(`${LIST_PATH}/${documentId}`);
+  }
   await setFlashMessage({
     type: 'success',
     title: 'Documento confermato',

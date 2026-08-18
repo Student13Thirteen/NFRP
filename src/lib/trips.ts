@@ -2,6 +2,7 @@ import {
   Prisma,
   TripBillingStatus,
   TripStatus,
+  type Customer,
   type Driver,
   type LoadingBase,
   type SalesPoint,
@@ -268,6 +269,14 @@ export function buildDriverOptions(drivers: Array<Pick<Driver, 'id' | 'firstName
     id: driver.id,
     label: getDriverLabel(driver),
     active: driver.active
+  }));
+}
+
+export function buildCustomerOptions(customers: Array<Pick<Customer, 'id' | 'code' | 'name' | 'active'>>): TripSelectOption[] {
+  return customers.map((customer) => ({
+    id: customer.id,
+    label: customer.code ? `${customer.name} (${customer.code})` : customer.name,
+    active: customer.active
   }));
 }
 

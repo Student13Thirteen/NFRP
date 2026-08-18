@@ -85,6 +85,24 @@ describe('assistant planner', () => {
     });
   });
 
+  it('answers tachograph software evidence questions locally without using the LLM', () => {
+    expect(selectAssistantPlanHeuristic('quali camion hanno l aggiornamento tachigrafo documentato?')).toEqual({
+      action: 'tool_call',
+      toolName: 'getTachographUpdateStatus',
+      arguments: { tachographStatus: 'documented' }
+    });
+    expect(selectAssistantPlanHeuristic('quali trattori non hanno l aggiornamento software tachigrafo?')).toEqual({
+      action: 'tool_call',
+      toolName: 'getTachographUpdateStatus',
+      arguments: { tachographStatus: 'missing' }
+    });
+    expect(selectAssistantPlanHeuristic('ZZ105ZZ ha aggiornamento tachigrafo certificato?')).toEqual({
+      action: 'tool_call',
+      toolName: 'getTachographUpdateStatus',
+      arguments: { plate: 'ZZ105ZZ', tachographStatus: 'all' }
+    });
+  });
+
   it('selects trailer expiries within a custom window', () => {
     expect(selectAssistantPlanHeuristic('scadenze entro 30 giorni dei semirimorchi')).toEqual({
       action: 'tool_call',

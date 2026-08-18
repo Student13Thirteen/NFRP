@@ -5,7 +5,8 @@ import {
   expenseDocumentInclude,
   filterAndSortExpenseDocuments,
   formatEuroCents,
-  getAllocationLabel,
+  getExpenseAllocationLabel,
+  getExpenseLineAllocations,
   normalizeExpenseDocumentListFilters
 } from '@/lib/expense';
 import { generateReportPdf } from '@/lib/report-pdf';
@@ -32,9 +33,16 @@ export async function GET(request: Request) {
   const filteredVehicleLine = filteredVehicleId
     ? allDocuments
         .flatMap((document) => document.lines)
-        .find((line) => line.tractorId === filteredVehicleId || line.trailerId === filteredVehicleId)
+        .find((line) => getExpenseLineAllocations(line).some(
+          (allocation) => allocation.tractorId === filteredVehicleId || allocation.trailerId === filteredVehicleId
+        ))
     : null;
-  const filteredVehiclePlate = filteredVehicleLine?.tractor?.plate || filteredVehicleLine?.trailer?.plate;
+  const filteredVehicleAllocation = filteredVehicleLine
+    ? getExpenseLineAllocations(filteredVehicleLine).find(
+        (allocation) => allocation.tractorId === filteredVehicleId || allocation.trailerId === filteredVehicleId
+      )
+    : null;
+  const filteredVehiclePlate = filteredVehicleAllocation?.tractor?.plate || filteredVehicleAllocation?.trailer?.plate;
   const confirmed = documents.filter((document) => document.status === 'CONFIRMED');
   const net = confirmed.reduce((sum, document) => sum + document.totalImponibileCents, 0);
   const vat = confirmed.reduce((sum, document) => sum + document.totalVatCents, 0);
@@ -76,10 +84,14 @@ export async function GET(request: Request) {
       supplier: document.supplier?.name || document.supplierName || '-',
       number: document.documentNumber || '-',
       lines: String(document.lines.length),
-      allocation: Array.from(new Set(document.lines.map((line) => getAllocationLabel(line)))).join(', ') || '-',
+      allocation: Array.from(new Set(document.lines.flatMap((line) =>
+        getExpenseLineAllocations(line).map((allocation) => getExpenseAllocationLabel(allocation))
+      ))).join(', ') || '-',
       odometer:
         Array.from(
-          new Set(document.lines.flatMap((line) => line.odometerKm === null ? [] : [line.odometerKm]))
+          new Set(document.lines.flatMap((line) => getExpenseLineAllocations(line).flatMap(
+            (allocation) => allocation.odometerKm === null ? [] : [allocation.odometerKm]
+          )))
         )
           .map((value) => value.toLocaleString('it-IT'))
           .join(', ') || '-',

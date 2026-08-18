@@ -9,6 +9,7 @@ import { buildEntityRelation } from '@/lib/documents';
 import { emptyStoredPdf, removeStoredPdf, storePdfFile, type NullableStoredPdf, type StoredPdf } from '@/lib/files';
 import { formString, optionalFormString } from '@/lib/form';
 import { isDisposedVehicleStatus } from '@/lib/vehicle-lifecycle';
+import { isTachographUpdateDocumentTypeName } from '@/lib/tachograph-update';
 
 const documentMetadataSchema = z.object({
   title: z.string().min(1, 'Titolo richiesto').max(180),
@@ -16,7 +17,7 @@ const documentMetadataSchema = z.object({
   entityType: z.nativeEnum(EntityType),
   entityId: z.string().min(1),
   issueDate: z.date().nullable(),
-  expiryDate: z.date(),
+  expiryDate: z.date().nullable(),
   noticeDays: z.number().int().min(1).max(3650),
   amountCents: z.number().int().min(0).max(999999999).nullable(),
   notes: z.string().max(4000).nullable(),
@@ -206,8 +207,12 @@ export async function parseDocumentMetadata(formData: FormData, fallbackNoticeDa
 
   const noticeDaysValue = Number(formData.get('noticeDays') || fallbackNoticeDays || documentType.defaultNoticeDays);
   const { entityType, entityId } = parseEntityKey(formString(formData, 'entityKey'));
+  if (isTachographUpdateDocumentTypeName(documentType.name) && entityType !== EntityType.TRACTOR) {
+    throw new Error('L’aggiornamento tachigrafo digitale puo essere associato solo a un trattore.');
+  }
   const entityLabel = await getEntityTitleLabel(entityType, entityId);
   const generatedTitle = `${documentType.name} - ${entityLabel}`.slice(0, 180);
+  const tachographUpdate = isTachographUpdateDocumentTypeName(documentType.name);
 
   return documentMetadataSchema.parse({
     title: optionalFormString(formData, 'title') || generatedTitle,
@@ -215,7 +220,7 @@ export async function parseDocumentMetadata(formData: FormData, fallbackNoticeDa
     entityType,
     entityId,
     issueDate: parseDate(formString(formData, 'issueDate'), false),
-    expiryDate: parseDate(formString(formData, 'expiryDate'), true),
+    expiryDate: tachographUpdate ? null : parseDate(formString(formData, 'expiryDate'), documentType.expiryRequired),
     noticeDays: noticeDaysValue,
     amountCents: parseAmountCents(formData),
     notes: optionalFormString(formData, 'notes'),

@@ -2,9 +2,11 @@ import { requireUser } from '@/lib/auth';
 import { DocumentStatus, EntityType } from '@prisma/client';
 import { Save } from 'lucide-react';
 import { DatePartsInput } from '@/components/DatePartsInput';
+import { DocumentTypeExpiryFields } from '@/components/DocumentTypeExpiryFields';
 import { EntitySelect } from '@/components/EntitySelect';
 import { FileUpload } from '@/components/FileUpload';
 import { PageHeader } from '@/components/PageHeader';
+import { RecoverableForm } from '@/components/RecoverableForm';
 import { prisma } from '@/lib/db';
 import { getStatusLabel } from '@/lib/documents';
 import { buildEntityKey, buildEntityOptions } from '@/lib/entities';
@@ -35,28 +37,28 @@ export default async function NewDocumentPage({ searchParams }: NewDocumentPageP
     : undefined;
   const defaultEntityKey =
     defaultEntityType && resolvedSearchParams.entityId ? buildEntityKey(defaultEntityType, resolvedSearchParams.entityId) : undefined;
+  const defaultDocumentTypeId =
+    documentTypes.find((documentType) => documentType.id === resolvedSearchParams.documentTypeId)?.id || documentTypes[0]?.id || '';
 
   return (
     <>
       <PageHeader title="Nuovo documento" description="Imposta scadenza e allega il PDF se disponibile." />
       <section className="panel">
         {resolvedSearchParams.error ? <p className="form-error">{resolvedSearchParams.error}</p> : null}
-        <form action="/api/documents/create" method="post" encType="multipart/form-data" className="form-stack" noValidate>
+        <RecoverableForm
+          action="/api/documents/create"
+          method="post"
+          encType="multipart/form-data"
+          className="form-stack"
+          noValidate
+          recoveryKey="document:new"
+          recoverOnError={Boolean(resolvedSearchParams.error)}
+        >
           <div className="form-grid">
-            <label>
-              Tipo documento
-              <select name="documentTypeId" defaultValue={resolvedSearchParams.documentTypeId || documentTypes[0]?.id || ''} required>
-                {documentTypes.map((documentType) => (
-                  <option key={documentType.id} value={documentType.id}>
-                    {documentType.name}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <DocumentTypeExpiryFields documentTypes={documentTypes} defaultDocumentTypeId={defaultDocumentTypeId} />
             <EntitySelect options={entityOptions} defaultValue={defaultEntityKey} />
             <FileUpload label="File PDF opzionale" name="file" />
             <DatePartsInput label="Data emissione" name="issueDate" />
-            <DatePartsInput label="Data scadenza" name="expiryDate" required />
             <label>
               Giorni preavviso
               <input name="noticeDays" type="number" min={1} defaultValue={30} required />
@@ -84,7 +86,7 @@ export default async function NewDocumentPage({ searchParams }: NewDocumentPageP
             <Save size={16} aria-hidden />
             Salva documento
           </button>
-        </form>
+        </RecoverableForm>
       </section>
     </>
   );

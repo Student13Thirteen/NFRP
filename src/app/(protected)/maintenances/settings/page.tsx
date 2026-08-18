@@ -2,6 +2,7 @@ import { requireUser } from '@/lib/auth';
 import Link from 'next/link';
 import { ArrowLeft, Plus } from 'lucide-react';
 import { PageHeader } from '@/components/PageHeader';
+import { RegistryFiscalFields } from '@/components/RegistryFiscalFields';
 import { prisma } from '@/lib/db';
 import { formatSupplierAddress, formatSupplierContacts } from '@/lib/suppliers';
 import { createMaintenanceCategoryAction, createMaintenanceSupplierAction } from '../actions';
@@ -28,7 +29,7 @@ export default async function MaintenanceSettingsPage({ searchParams }: Maintena
     <>
       <PageHeader
         title="Anagrafiche manutenzioni"
-        description="Categorie e fornitori usati per filtrare inserimenti e query del bot."
+        description="Registro unico condiviso con Magazzino: ogni categoria o fornitore creato qui è disponibile anche nei carichi di magazzino. Nei form puoi creare un fornitore al volo senza perdere i dati inseriti."
         action={
           <Link className="secondary-button" href="/maintenances">
             <ArrowLeft size={16} aria-hidden />
@@ -96,12 +97,12 @@ export default async function MaintenanceSettingsPage({ searchParams }: Maintena
         </section>
 
         <section className="panel">
-          <h2>Nuovo fornitore</h2>
+          <h2>Aggiungi fornitore</h2>
           <form action={createMaintenanceSupplierAction} className="form-stack">
             <div className="form-grid">
               <label>
                 Nome fornitore
-                <input name="name" placeholder="Es. Officina Demo Zeta Manutenzioni" required />
+                <input name="name" placeholder="Es. Officina Demo" required />
               </label>
               <label>
                 Telefono
@@ -111,34 +112,40 @@ export default async function MaintenanceSettingsPage({ searchParams }: Maintena
                 Email
                 <input name="email" type="email" />
               </label>
-              <label>
-                Via / indirizzo
-                <input name="address" />
-              </label>
-              <label>
-                CAP
-                <input name="postalCode" />
-              </label>
-              <label>
-                Citta
-                <input name="city" />
-              </label>
-              <label>
-                Provincia
-                <input name="province" />
-              </label>
-              <label>
-                Nazione
-                <input name="country" />
-              </label>
             </div>
-            <label>
-              Note
-              <textarea name="notes" rows={3} />
-            </label>
+            <details className="registry-optional-fields">
+              <summary>Dati fiscali, indirizzo e note (facoltativi)</summary>
+              <div className="form-grid">
+                <RegistryFiscalFields />
+                <label>
+                  Via / indirizzo
+                  <input name="address" />
+                </label>
+                <label>
+                  CAP
+                  <input name="postalCode" />
+                </label>
+                <label>
+                  Citta
+                  <input name="city" />
+                </label>
+                <label>
+                  Provincia
+                  <input name="province" />
+                </label>
+                <label>
+                  Nazione
+                  <input name="country" />
+                </label>
+                <label>
+                  Note
+                  <textarea name="notes" rows={3} />
+                </label>
+              </div>
+            </details>
             <button className="primary-button" type="submit">
               <Plus size={16} aria-hidden />
-              Salva fornitore
+              Crea fornitore
             </button>
           </form>
 

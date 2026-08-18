@@ -6,6 +6,8 @@ import { prisma } from '@/lib/db';
 import { emptyStoredPdf, removeStoredPdf, storePdfFile, type NullableStoredPdf, type StoredPdf } from '@/lib/files';
 import { formBoolean, formString, optionalFormString } from '@/lib/form';
 import { formatDate } from '@/lib/dates';
+import { getDriverIdForTractorAtDate } from '@/lib/driver-assignments';
+import { optionalPecEmailSchema, optionalTaxCodeSchema, optionalVatNumberSchema } from '@/lib/fiscal-data';
 import { parseMaintenanceVehicleKey } from '@/lib/maintenance';
 
 const maintenanceSchema = z.object({
@@ -38,6 +40,9 @@ const maintenanceSupplierSchema = z.object({
   name: z.string().min(1, 'Nome fornitore richiesto.').max(180),
   phone: z.string().max(80).nullable(),
   email: z.string().max(160).nullable(),
+  vatNumber: optionalVatNumberSchema,
+  taxCode: optionalTaxCodeSchema,
+  pecEmail: optionalPecEmailSchema,
   address: z.string().max(240).nullable(),
   postalCode: z.string().max(20).nullable(),
   city: z.string().max(120).nullable(),
@@ -190,12 +195,17 @@ function buildGeneratedTitle(input: {
 export async function parseMaintenanceForm(formData: FormData) {
   const categoryId = formString(formData, 'categoryId');
   const supplierId = optionalFormString(formData, 'supplierId');
-  const driverId = optionalFormString(formData, 'driverId');
+  const selectedDriverId = optionalFormString(formData, 'driverId');
   const maintenanceDate = parseDate(formString(formData, 'maintenanceDate'), true, 'Data intervento');
   if (!maintenanceDate) throw new Error('Data intervento obbligatoria.');
 
   const description = formString(formData, 'description');
   const vehicleRelation = await buildVehicleRelation(optionalFormString(formData, 'vehicleKey'));
+  const driverId = selectedDriverId || (
+    vehicleRelation.tractorId
+      ? await getDriverIdForTractorAtDate(prisma, vehicleRelation.tractorId, maintenanceDate)
+      : null
+  );
   await assertMaintenanceReferences({ categoryId, supplierId, driverId });
   const [categoryName, supplierName] = await Promise.all([getCategoryName(categoryId), getSupplierName(supplierId)]);
   const title =
@@ -245,6 +255,9 @@ export function parseMaintenanceSupplierForm(formData: FormData) {
     name: formString(formData, 'name'),
     phone: optionalFormString(formData, 'phone'),
     email: optionalFormString(formData, 'email'),
+    vatNumber: formString(formData, 'vatNumber'),
+    taxCode: formString(formData, 'taxCode'),
+    pecEmail: formString(formData, 'pecEmail'),
     address: optionalFormString(formData, 'address'),
     postalCode: optionalFormString(formData, 'postalCode'),
     city: optionalFormString(formData, 'city'),

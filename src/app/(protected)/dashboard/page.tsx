@@ -1,6 +1,6 @@
 import { requireUser } from '@/lib/auth';
 import Link from 'next/link';
-import { ArrowRight, CircleCheckBig, FilePlus, FileUp, Fuel, Landmark, MapPinned, ReceiptText, Route, ScanLine, Warehouse, Wrench } from 'lucide-react';
+import { ArrowRight, CircleCheckBig, Container, FilePlus, FileUp, Fuel, Landmark, MapPinned, ReceiptText, Route, ScanLine, Warehouse, Wrench } from 'lucide-react';
 import { DocumentTable } from '@/components/DocumentTable';
 import { PageHeader } from '@/components/PageHeader';
 import { daysUntil } from '@/lib/dates';
@@ -162,7 +162,8 @@ export default async function DashboardPage() {
       </section>
 
       <section className="quick-action-strip" aria-label="Azioni frequenti">
-        <Link href="/trips/new"><MapPinned size={17} aria-hidden /><span>Nuovo viaggio</span></Link>
+        <Link href="/trips/new"><MapPinned size={17} aria-hidden /><span>Nuova consegna carburante</span></Link>
+        <Link href="/trips/container/new"><Container size={17} aria-hidden /><span>Nuovo trasporto container</span></Link>
         <Link href="/fuel/new"><Fuel size={17} aria-hidden /><span>Nuovo rifornimento</span></Link>
         <Link href="/maintenances/expenses/import"><FileUp size={17} aria-hidden /><span>Importa manutenzioni</span></Link>
         <Link href="/leases/import"><Landmark size={17} aria-hidden /><span>Importa leasing</span></Link>

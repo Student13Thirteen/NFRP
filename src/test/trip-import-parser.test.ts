@@ -99,7 +99,7 @@ GENOVASALVATORE PISCITELLO
   it('keeps multiple DATI PRESA stops separate and reads compact container references', () => {
     const parsed = parseTripWaybillText(`
 LETTERA DI VETTURA Nr. 002028 DATA 23/07/2026
-AutistaDANILOMotriceSemirimorchioZZ111ZZ
+AutistaMARIOMotriceSemirimorchioZZ111ZZ
 Vettore NFRP SRL VIA SANT' ERASMO 1
 Committente 000028
 DATI PRESA 1 ONT MAGAZZINI GENERALI VIA TRIBONIANO 107 20157 MILANO (MI ) h. 12:30
@@ -114,7 +114,7 @@ Terminal di CaricoPSA GENOVA PRA (GE )
 Cod. ritiro PIN 43218Rif. Comp. MSC
 Terminal di ConsegnaVEDI DELIVERY
 TransitarioP&A
-Luogo CompilazioneGENOVAData23/07/2026CompilatoreChiara Benedetto
+Luogo CompilazioneGENOVAData23/07/2026CompilatoreOperatore Demo
 `);
 
     expect(parsed.rows[0]).toMatchObject({
@@ -153,7 +153,7 @@ Luogo CompilazioneGENOVAData23/07/2026CompilatoreChiara Benedetto
   it('reads a joined ship and booking without inventing a second container or seal', () => {
     const parsed = parseTripWaybillText(`
 LETTERA DI VETTURA Nr. 002081 DATA 27/07/2026
-AutistaGIOVANNIMotriceSemirimorchioZZ103ZZ
+AutistaANDREAMotriceSemirimorchioZZ103ZZ
 Vettore NFRP SRL VIA SANT' ERASMO 1
 Committente 000004
 DATI PRESA 1 ARESIO CERAMICHE VIA CASALGRASSO 12030 POLONGHERA (CN ) h. 14,00
@@ -165,7 +165,7 @@ Terminal di CaricoRHE RIVALTA (AL )
 Rif. Comp. MAERSK
 Terminal di ConsegnaBETTOLO GENOVA
 TransitarioAPONEO
-Luogo CompilazioneGENOVAData27/07/2026CompilatoreChiara Benedetto
+Luogo CompilazioneGENOVAData27/07/2026CompilatoreOperatore Demo
 `);
 
     expect(parsed.rows[0]).toMatchObject({

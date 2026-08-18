@@ -45,7 +45,13 @@ const issueLabels = [
   'data verifica',
   'verifica effettuata',
   'verificato il',
-  'calibrato il'
+  'calibrato il',
+  'data fattura',
+  'fattura n',
+  'fattura numero',
+  'num commessa',
+  'numero commessa',
+  'commessa'
 ];
 
 const expiryLabels = [
@@ -378,7 +384,7 @@ function findSeparatedInsurancePeriod(source: string, candidates: DateCandidate[
   if (labelIndex < 0) return null;
   if (
     !sourceHasPhrase(normalizedSource, 'certificato di assicurazione') ||
-    !sourceHasPhrase(normalizedSource, 'Assicurazioni Demo Due')
+    !sourceHasPhrase(normalizedSource, 'assicurazioni demo due')
   ) {
     return null;
   }

@@ -1,16 +1,23 @@
 'use client';
 
 import { CheckCircle2, Plus, Trash2, Wrench } from 'lucide-react';
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   VAT_RATES,
   computeLineVat,
   formatEuroCents,
   imponibileCentsFromUnit
 } from '@/lib/expense-shared';
+import { FORM_DRAFT_RESTORE_EVENT, formDraftFromEvent, recoveredFormRowKey } from '@/lib/form-draft';
 
 export type AllocationChoice = { value: string; label: string; active?: boolean };
 export type CategoryChoice = { id: string; label: string; active?: boolean };
+
+export type ExpenseAllocationDefault = {
+  quantity?: string;
+  allocationKey?: string;
+  odometerKm?: string;
+};
 
 export type ExpenseLineDefault = {
   description?: string;
@@ -22,6 +29,7 @@ export type ExpenseLineDefault = {
   allocationKey?: string;
   categoryId?: string;
   odometerKm?: string;
+  allocations?: ExpenseAllocationDefault[];
 };
 
 type ExpenseLinesEditorProps = {
@@ -33,6 +41,13 @@ type ExpenseLinesEditorProps = {
   warehouseOrVehicleRequired?: boolean;
 };
 
+type EditableAllocation = {
+  key: string;
+  quantity: string;
+  allocationKey: string;
+  odometerKm: string;
+};
+
 type EditableLine = {
   key: string;
   description: string;
@@ -41,10 +56,15 @@ type EditableLine = {
   unit: string;
   unitPrice: string;
   vatRate: string;
-  allocationKey: string;
   categoryId: string;
-  odometerKm: string;
+  allocations: EditableAllocation[];
 };
+
+type EditableLineField = Exclude<keyof EditableLine, 'key' | 'allocations'>;
+
+function defaultAllocation(lineKey: string, quantity: string, allocationKey: string, odometerKm = ''): EditableAllocation {
+  return { key: `${lineKey}-allocation-0`, quantity, allocationKey, odometerKm };
+}
 
 function emptyLine(key: string): EditableLine {
   return {
@@ -55,26 +75,36 @@ function emptyLine(key: string): EditableLine {
     unit: 'pz',
     unitPrice: '',
     vatRate: '22',
-    allocationKey: 'GENERIC',
     categoryId: '',
-    odometerKm: ''
+    allocations: [defaultAllocation(key, '1', 'GENERIC')]
   };
 }
 
 function buildInitialLines(defaultRows: ExpenseLineDefault[] | undefined): EditableLine[] {
   if (!defaultRows || defaultRows.length === 0) return [emptyLine('line-0')];
-  return defaultRows.map((row, index) => ({
-    key: `line-${index}`,
-    description: row.description ?? '',
-    code: row.code ?? '',
-    quantity: row.quantity ?? '1',
-    unit: row.unit ?? 'pz',
-    unitPrice: row.unitPrice ?? '',
-    vatRate: row.vatRate ?? '22',
-    allocationKey: row.allocationKey ?? 'GENERIC',
-    categoryId: row.categoryId ?? '',
-    odometerKm: row.odometerKm ?? ''
-  }));
+  return defaultRows.map((row, index) => {
+    const key = `line-${index}`;
+    const quantity = row.quantity ?? '1';
+    const allocationRows = row.allocations?.length
+      ? row.allocations
+      : [{ quantity, allocationKey: row.allocationKey, odometerKm: row.odometerKm }];
+    return {
+      key,
+      description: row.description ?? '',
+      code: row.code ?? '',
+      quantity,
+      unit: row.unit ?? 'pz',
+      unitPrice: row.unitPrice ?? '',
+      vatRate: row.vatRate ?? '22',
+      categoryId: row.categoryId ?? '',
+      allocations: allocationRows.map((allocation, allocationIndex) => ({
+        key: `${key}-allocation-${allocationIndex}`,
+        quantity: allocation.quantity ?? quantity,
+        allocationKey: allocation.allocationKey ?? 'GENERIC',
+        odometerKm: allocation.odometerKm ?? ''
+      }))
+    };
+  });
 }
 
 /** Parsing italiano per la sola anteprima live (la verità la fissa il server). */
@@ -84,13 +114,24 @@ function toNumber(value: string): number {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+function toQuantityMilli(value: string): number {
+  return Math.round(toNumber(value || '0') * 1000);
+}
+
+function fromQuantityMilli(value: number): string {
+  return (Math.max(0, value) / 1000).toLocaleString('it-IT', { maximumFractionDigits: 3 });
+}
+
 function lineUnitPriceCents(line: EditableLine): number {
   return Math.round(toNumber(line.unitPrice || '0') * 100);
 }
 
 function lineImponibileCents(line: EditableLine): number {
-  const quantityMilli = Math.round(toNumber(line.quantity || '0') * 1000);
-  return imponibileCentsFromUnit(quantityMilli, lineUnitPriceCents(line));
+  return imponibileCentsFromUnit(toQuantityMilli(line.quantity), lineUnitPriceCents(line));
+}
+
+function allocationTotalMilli(line: EditableLine): number {
+  return line.allocations.reduce((sum, allocation) => sum + toQuantityMilli(allocation.quantity), 0);
 }
 
 export function ExpenseLinesEditor({
@@ -101,20 +142,27 @@ export function ExpenseLinesEditor({
   vehicleAllocationRequired = false,
   warehouseOrVehicleRequired = false
 }: ExpenseLinesEditorProps) {
+  const editorRef = useRef<HTMLDivElement>(null);
   const allocationRequired = vehicleAllocationRequired || warehouseOrVehicleRequired;
   const allocationIsAllowed = (value: string) =>
     value.startsWith('TRACTOR:') ||
     value.startsWith('TRAILER:') ||
     (warehouseOrVehicleRequired && value === 'WAREHOUSE');
-  const initialLineCount = buildInitialLines(defaultRows).length;
+  const initialLines = buildInitialLines(defaultRows);
   const [lines, setLines] = useState<EditableLine[]>(() =>
-    buildInitialLines(defaultRows).map((line) => ({
+    initialLines.map((line) => ({
       ...line,
-      allocationKey: allocationRequired && !allocationIsAllowed(line.allocationKey) ? '' : line.allocationKey
+      allocations: line.allocations.map((allocation) => ({
+        ...allocation,
+        allocationKey: allocationRequired && !allocationIsAllowed(allocation.allocationKey)
+          ? ''
+          : allocation.allocationKey
+      }))
     }))
   );
   const [bulkAllocation, setBulkAllocation] = useState('');
-  const nextKey = useRef(initialLineCount);
+  const nextLineKey = useRef(initialLines.length);
+  const nextAllocationKey = useRef(initialLines.reduce((sum, line) => sum + line.allocations.length, 0));
   const vehicleAllocations = useMemo(
     () => allocations.filter((option) => option.value.startsWith('TRACTOR:') || option.value.startsWith('TRAILER:')),
     [allocations]
@@ -128,94 +176,216 @@ export function ExpenseLinesEditor({
     [allocations, warehouseOrVehicleRequired]
   );
 
-  function updateLine(key: string, field: keyof EditableLine, value: string) {
-    setLines((current) => current.map((line) => (line.key === key ? { ...line, [field]: value } : line)));
+  function updateLine(key: string, field: EditableLineField, value: string) {
+    setLines((current) => current.map((line) => {
+      if (line.key !== key) return line;
+      if (field === 'quantity' && line.allocations.length === 1) {
+        return { ...line, quantity: value, allocations: [{ ...line.allocations[0], quantity: value }] };
+      }
+      return { ...line, [field]: value };
+    }));
+  }
+
+  function updateAllocation(lineKey: string, allocationKey: string, field: keyof EditableAllocation, value: string) {
+    setLines((current) => current.map((line) => line.key !== lineKey ? line : {
+      ...line,
+      allocations: line.allocations.map((allocation) => allocation.key !== allocationKey ? allocation : {
+        ...allocation,
+        [field]: value,
+        ...(field === 'allocationKey' && value === 'WAREHOUSE' ? { odometerKm: '' } : {})
+      })
+    }));
   }
 
   function addLine() {
-    const key = `line-${nextKey.current}`;
-    nextKey.current += 1;
-    setLines((current) => [
-      ...current,
-      { ...emptyLine(key), allocationKey: allocationRequired ? '' : 'GENERIC' }
-    ]);
+    const key = `line-${nextLineKey.current}`;
+    nextLineKey.current += 1;
+    const line = emptyLine(key);
+    if (allocationRequired) line.allocations[0].allocationKey = '';
+    setLines((current) => [...current, line]);
   }
 
   function removeLine(key: string) {
     setLines((current) => (current.length <= 1 ? current : current.filter((line) => line.key !== key)));
   }
 
+  function splitLine(lineKey: string) {
+    setLines((current) => current.map((line) => {
+      if (line.key !== lineKey) return line;
+      const candidates = line.allocations
+        .map((allocation, index) => ({ index, quantityMilli: toQuantityMilli(allocation.quantity) }))
+        .filter((candidate) => candidate.quantityMilli > 1)
+        .sort((left, right) => right.quantityMilli - left.quantityMilli || left.index - right.index);
+      const source = candidates[0];
+      if (!source) return line;
+
+      const newQuantityMilli = source.quantityMilli >= 2000 ? 1000 : Math.floor(source.quantityMilli / 2);
+      const sourceAllocation = line.allocations[source.index];
+      const newAllocation: EditableAllocation = {
+        key: `${line.key}-allocation-${nextAllocationKey.current}`,
+        quantity: fromQuantityMilli(newQuantityMilli),
+        allocationKey: allocationRequired ? '' : sourceAllocation.allocationKey,
+        odometerKm: ''
+      };
+      nextAllocationKey.current += 1;
+
+      return {
+        ...line,
+        allocations: [
+          ...line.allocations.slice(0, source.index),
+          { ...sourceAllocation, quantity: fromQuantityMilli(source.quantityMilli - newQuantityMilli) },
+          ...line.allocations.slice(source.index + 1),
+          newAllocation
+        ]
+      };
+    }));
+  }
+
+  function removeAllocation(lineKey: string, allocationKey: string) {
+    setLines((current) => current.map((line) => {
+      if (line.key !== lineKey || line.allocations.length <= 1) return line;
+      const removed = line.allocations.find((allocation) => allocation.key === allocationKey);
+      const remaining = line.allocations.filter((allocation) => allocation.key !== allocationKey);
+      if (!removed || remaining.length === 0) return line;
+      return {
+        ...line,
+        allocations: remaining.map((allocation, index) => index === 0
+          ? { ...allocation, quantity: fromQuantityMilli(toQuantityMilli(allocation.quantity) + toQuantityMilli(removed.quantity)) }
+          : allocation)
+      };
+    }));
+  }
+
   function applyAllocationToAll(value: string) {
     setBulkAllocation(value);
     if (!value) return;
-    setLines((current) => current.map((line) => ({ ...line, allocationKey: value })));
+    setLines((current) => current.map((line) => ({
+      ...line,
+      allocations: line.allocations.map((allocation) => ({
+        ...allocation,
+        allocationKey: value,
+        ...(value === 'WAREHOUSE' ? { odometerKm: '' } : {})
+      }))
+    })));
   }
 
-  const totals = useMemo(() => {
-    return lines.reduce(
-      (acc, line) => {
-        const imponibile = lineImponibileCents(line);
-        const { vatCents, totalCents } = computeLineVat(imponibile, Number(line.vatRate) || 0);
-        return {
-          imponibile: acc.imponibile + imponibile,
-          vat: acc.vat + vatCents,
-          total: acc.total + totalCents
-        };
-      },
-      { imponibile: 0, vat: 0, total: 0 }
-    );
-  }, [lines]);
+  const totals = useMemo(() => lines.reduce(
+    (acc, line) => {
+      const imponibile = lineImponibileCents(line);
+      const { vatCents, totalCents } = computeLineVat(imponibile, Number(line.vatRate) || 0);
+      return { imponibile: acc.imponibile + imponibile, vat: acc.vat + vatCents, total: acc.total + totalCents };
+    },
+    { imponibile: 0, vat: 0, total: 0 }
+  ), [lines]);
 
-  const assignedLines = lines.filter((line) => allocationIsAllowed(line.allocationKey)).length;
+  const lineIsComplete = (line: EditableLine) =>
+    allocationTotalMilli(line) === toQuantityMilli(line.quantity) &&
+    line.allocations.every((allocation) =>
+      toQuantityMilli(allocation.quantity) > 0 && (!allocationRequired || allocationIsAllowed(allocation.allocationKey))
+    );
+  const assignedLines = lines.filter(lineIsComplete).length;
+
+  useEffect(() => {
+    const form = editorRef.current?.closest('form');
+    if (!form) return;
+    const restore = (event: Event) => {
+      const values = formDraftFromEvent(event)?.values;
+      const lineKeys = values?.lineKey;
+      if (!values || !lineKeys?.length) return;
+
+      const recoveredLines = lineKeys.map((lineKey, lineIndex): EditableLine => {
+        // Le chiavi salvate possono essere sparse dopo l'eliminazione di una riga.
+        // Le rinumeriamo al ripristino per non riutilizzare una chiave React gia presente.
+        const recoveredLineKey = recoveredFormRowKey('line', lineIndex);
+        const allocationIndexes = (values.lineAllocationLineKey || [])
+          .map((key, index) => key === lineKey ? index : -1)
+          .filter((index) => index >= 0);
+        const quantity = values.lineQuantity?.[lineIndex] || '1';
+        const recoveredAllocations = allocationIndexes.length > 0
+          ? allocationIndexes.map((allocationIndex, index) => {
+              const recoveredAllocationKey = values.lineAllocationKey?.[allocationIndex] || 'GENERIC';
+              const recoveredAllocationIsAllowed =
+                recoveredAllocationKey.startsWith('TRACTOR:') ||
+                recoveredAllocationKey.startsWith('TRAILER:') ||
+                (warehouseOrVehicleRequired && recoveredAllocationKey === 'WAREHOUSE');
+              return {
+                key: `${recoveredLineKey}-recovered-allocation-${index}`,
+                quantity: values.lineAllocationQuantity?.[allocationIndex] || quantity,
+                allocationKey: allocationRequired && !recoveredAllocationIsAllowed ? '' : recoveredAllocationKey,
+                odometerKm: values.lineAllocationOdometerKm?.[allocationIndex] || ''
+              };
+            })
+          : [defaultAllocation(recoveredLineKey, quantity, allocationRequired ? '' : 'GENERIC')];
+
+        return {
+          key: recoveredLineKey,
+          description: values.lineDescription?.[lineIndex] || '',
+          code: values.lineCode?.[lineIndex] || '',
+          quantity,
+          unit: values.lineUnit?.[lineIndex] || 'pz',
+          unitPrice: values.lineUnitPrice?.[lineIndex] || '',
+          vatRate: values.lineVatRate?.[lineIndex] || '22',
+          categoryId: values.lineCategoryId?.[lineIndex] || '',
+          allocations: recoveredAllocations
+        };
+      });
+
+      setLines(recoveredLines);
+      setBulkAllocation('');
+      nextLineKey.current = recoveredLines.length;
+      nextAllocationKey.current = recoveredLines.reduce((sum, line) => sum + line.allocations.length, 0);
+    };
+    form.addEventListener(FORM_DRAFT_RESTORE_EVENT, restore);
+    return () => form.removeEventListener(FORM_DRAFT_RESTORE_EVENT, restore);
+  }, [allocationRequired, warehouseOrVehicleRequired]);
 
   return (
-    <div className="expense-lines">
+    <div className="expense-lines" ref={editorRef}>
       {allocationRequired ? (
         <section className={`maintenance-allocation-prompt${assignedLines === lines.length ? ' complete' : ''}`}>
           <span className="maintenance-allocation-icon" aria-hidden>
             {assignedLines === lines.length ? <CheckCircle2 size={22} /> : <Wrench size={22} />}
           </span>
           <div className="maintenance-allocation-copy">
-            <strong>{warehouseOrVehicleRequired ? 'Scegli Magazzino o mezzo' : 'Assegna le operazioni ai mezzi'}</strong>
+            <strong>{warehouseOrVehicleRequired ? 'Assegna quantità a Magazzino e mezzi' : 'Assegna le operazioni ai mezzi'}</strong>
             <span>
-              {assignedLines} di {lines.length} righe assegnate.{' '}
+              {assignedLines} di {lines.length} righe complete.{' '}
               {warehouseOrVehicleRequired
-                ? 'Usa Magazzino se il ricambio non è ancora montato; altrimenti scegli la targa. Se sul PDF è scritto solo l’autista, cercalo accanto alla targa.'
+                ? 'Se la stessa riga serve più destinazioni, usa “Ripartisci quantità”: il totale assegnato deve coincidere con quello fatturato.'
                 : 'Usa l’assegnazione rapida oppure scegli targhe diverse sulle singole operazioni.'}
             </span>
           </div>
           <label>
-            {warehouseOrVehicleRequired ? 'Applica una destinazione a tutte' : 'Applica una targa a tutte'}
+            {warehouseOrVehicleRequired ? 'Applica una destinazione a tutte le quote' : 'Applica una targa a tutte'}
             <select value={bulkAllocation} onChange={(event) => applyAllocationToAll(event.target.value)} disabled={disabled}>
               <option value="">{warehouseOrVehicleRequired ? 'Seleziona destinazione…' : 'Seleziona mezzo…'}</option>
               {(warehouseOrVehicleRequired ? requiredAllocations : vehicleAllocations).map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
+                <option key={option.value} value={option.value}>{option.label}</option>
               ))}
             </select>
           </label>
         </section>
       ) : null}
+
       <div className="expense-editor-list">
         {lines.map((line, index) => {
           const imponibile = lineImponibileCents(line);
           const vatRate = Number(line.vatRate) || 0;
           const unitIvato = computeLineVat(lineUnitPriceCents(line), vatRate).totalCents;
           const { totalCents } = computeLineVat(imponibile, vatRate);
+          const assignedMilli = allocationTotalMilli(line);
+          const lineQuantityMilli = toQuantityMilli(line.quantity);
+          const allocationMatches = assignedMilli === lineQuantityMilli;
+          const canSplit = line.allocations.some((allocation) => toQuantityMilli(allocation.quantity) > 1);
+
           return (
             <section className="expense-editor-row" key={line.key}>
+              <input type="hidden" name="lineKey" value={line.key} />
               <div className="expense-editor-row-head">
                 <strong>Operazione {index + 1}</strong>
                 {lines.length > 1 ? (
-                  <button
-                    type="button"
-                    className="icon-button"
-                    onClick={() => removeLine(line.key)}
-                    disabled={disabled}
-                    aria-label={`Rimuovi operazione ${index + 1}`}
-                    title="Rimuovi operazione"
-                  >
+                  <button type="button" className="icon-button" onClick={() => removeLine(line.key)} disabled={disabled}
+                    aria-label={`Rimuovi operazione ${index + 1}`} title="Rimuovi operazione">
                     <Trash2 size={16} aria-hidden />
                   </button>
                 ) : null}
@@ -224,127 +394,123 @@ export function ExpenseLinesEditor({
               <div className="expense-editor-fields">
                 <label className="expense-field-description">
                   Descrizione
-                  <input
-                    name="lineDescription"
-                    value={line.description}
+                  <input name="lineDescription" value={line.description}
                     onChange={(event) => updateLine(line.key, 'description', event.target.value)}
-                    placeholder="Es. Filtro olio, manodopera…"
-                    disabled={disabled}
-                  />
+                    placeholder="Es. Filtro olio, manodopera…" disabled={disabled} />
                 </label>
                 <label>
                   Codice
-                  <input
-                    name="lineCode"
-                    value={line.code}
-                    onChange={(event) => updateLine(line.key, 'code', event.target.value)}
-                    disabled={disabled}
-                  />
+                  <input name="lineCode" value={line.code}
+                    onChange={(event) => updateLine(line.key, 'code', event.target.value)} disabled={disabled} />
                 </label>
                 <label>
-                  Quantità
-                  <input
-                    name="lineQuantity"
-                    inputMode="decimal"
-                    value={line.quantity}
-                    onChange={(event) => updateLine(line.key, 'quantity', event.target.value)}
-                    disabled={disabled}
-                  />
+                  Quantità fatturata
+                  <input name="lineQuantity" inputMode="decimal" value={line.quantity}
+                    onChange={(event) => updateLine(line.key, 'quantity', event.target.value)} disabled={disabled} />
                 </label>
                 <label>
                   Unità
-                  <input
-                    name="lineUnit"
-                    value={line.unit}
-                    onChange={(event) => updateLine(line.key, 'unit', event.target.value)}
-                    disabled={disabled}
-                  />
+                  <input name="lineUnit" value={line.unit}
+                    onChange={(event) => updateLine(line.key, 'unit', event.target.value)} disabled={disabled} />
                 </label>
                 <label>
                   Prezzo unitario netto
-                  <input
-                    name="lineUnitPrice"
-                    inputMode="decimal"
-                    value={line.unitPrice}
-                    onChange={(event) => updateLine(line.key, 'unitPrice', event.target.value)}
-                    placeholder="0,00"
-                    disabled={disabled}
-                  />
+                  <input name="lineUnitPrice" inputMode="decimal" value={line.unitPrice}
+                    onChange={(event) => updateLine(line.key, 'unitPrice', event.target.value)} placeholder="0,00" disabled={disabled} />
                 </label>
                 <label>
                   IVA
-                  <select
-                    name="lineVatRate"
-                    value={line.vatRate}
-                    onChange={(event) => updateLine(line.key, 'vatRate', event.target.value)}
-                    disabled={disabled}
-                  >
-                    {VAT_RATES.map((rate) => (
-                      <option key={rate} value={rate}>
-                        {rate}%
-                      </option>
-                    ))}
+                  <select name="lineVatRate" value={line.vatRate}
+                    onChange={(event) => updateLine(line.key, 'vatRate', event.target.value)} disabled={disabled}>
+                    {VAT_RATES.map((rate) => <option key={rate} value={rate}>{rate}%</option>)}
                   </select>
                 </label>
               </div>
 
               <div className="expense-editor-assignment">
-                <label className="expense-field-allocation">
-                  {warehouseOrVehicleRequired ? 'Destinazione' : vehicleAllocationRequired ? 'Targa' : 'Allocazione'}
-                  <select
-                    name="lineAllocationKey"
-                    value={line.allocationKey}
-                    onChange={(event) => updateLine(line.key, 'allocationKey', event.target.value)}
-                    disabled={disabled}
-                    required={allocationRequired}
-                  >
-                    {allocationRequired && !allocationIsAllowed(line.allocationKey) ? (
-                      <option value="" disabled>
-                        {warehouseOrVehicleRequired ? 'Seleziona Magazzino o targa…' : 'Seleziona targa…'}
-                      </option>
-                    ) : null}
-                    {(allocationRequired ? requiredAllocations : allocations).map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                        {option.active === false ? ' (non attivo)' : ''}
-                      </option>
-                    ))}
-                  </select>
-                </label>
                 <label>
                   Categoria
-                  <select
-                    name="lineCategoryId"
-                    value={line.categoryId}
-                    onChange={(event) => updateLine(line.key, 'categoryId', event.target.value)}
-                    disabled={disabled}
-                  >
+                  <select name="lineCategoryId" value={line.categoryId}
+                    onChange={(event) => updateLine(line.key, 'categoryId', event.target.value)} disabled={disabled}>
                     <option value="">—</option>
                     {categories.map((category) => (
                       <option key={category.id} value={category.id}>
-                        {category.label}
-                        {category.active === false ? ' (non attiva)' : ''}
+                        {category.label}{category.active === false ? ' (non attiva)' : ''}
                       </option>
                     ))}
                   </select>
                 </label>
-                <label className="expense-field-odometer">
-                  Km del mezzo
-                  <input
-                    name="lineOdometerKm"
-                    type="number"
-                    inputMode="numeric"
-                    min={0}
-                    max={9999999}
-                    step={1}
-                    value={line.odometerKm}
-                    onChange={(event) => updateLine(line.key, 'odometerKm', event.target.value)}
-                    placeholder="Es. 260778"
-                    disabled={disabled}
-                    aria-describedby={`line-odometer-help-${line.key}`}
-                  />
-                  <small id={`line-odometer-help-${line.key}`}>Facoltativi, rilevati quando è stata eseguita l’operazione.</small>
-                </label>
+
+                <div className="expense-allocation-heading">
+                  <div>
+                    <strong>{warehouseOrVehicleRequired ? 'Ripartizione quantità' : 'Destinazione'}</strong>
+                    {warehouseOrVehicleRequired ? (
+                      <small className={allocationMatches ? 'allocation-total-ok' : 'allocation-total-error'} aria-live="polite">
+                        Assegnate {fromQuantityMilli(assignedMilli)} di {fromQuantityMilli(lineQuantityMilli)} {line.unit}
+                      </small>
+                    ) : null}
+                  </div>
+                  {warehouseOrVehicleRequired ? (
+                    <button className="secondary-button compact-button" type="button" onClick={() => splitLine(line.key)}
+                      disabled={disabled || !canSplit}>
+                      <Plus size={15} aria-hidden />
+                      Ripartisci quantità
+                    </button>
+                  ) : null}
+                </div>
+
+                <div className="expense-allocation-list">
+                  {line.allocations.map((allocation, allocationIndex) => (
+                    <div className="expense-allocation-row" key={allocation.key}>
+                      <input type="hidden" name="lineAllocationLineKey" value={line.key} />
+                      <label>
+                        Quantità assegnata
+                        <input name="lineAllocationQuantity" inputMode="decimal" min="0.001" step="0.001" required
+                          value={allocation.quantity}
+                          onChange={(event) => updateAllocation(line.key, allocation.key, 'quantity', event.target.value)}
+                          disabled={disabled} />
+                      </label>
+                      <label className="expense-field-allocation">
+                        {warehouseOrVehicleRequired ? 'Magazzino o targa' : vehicleAllocationRequired ? 'Targa' : 'Allocazione'}
+                        <select name="lineAllocationKey" value={allocation.allocationKey}
+                          onChange={(event) => updateAllocation(line.key, allocation.key, 'allocationKey', event.target.value)}
+                          disabled={disabled} required={allocationRequired}>
+                          {allocationRequired && !allocationIsAllowed(allocation.allocationKey) ? (
+                            <option value="" disabled>
+                              {warehouseOrVehicleRequired ? 'Seleziona Magazzino o targa…' : 'Seleziona targa…'}
+                            </option>
+                          ) : null}
+                          {(allocationRequired ? requiredAllocations : allocations).map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}{option.active === false ? ' (non attivo)' : ''}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="expense-field-odometer">
+                        Km del mezzo
+                        <input name="lineAllocationOdometerKm" type="number" inputMode="numeric" min={0} max={9999999} step={1}
+                          value={allocation.odometerKm}
+                          onChange={(event) => updateAllocation(line.key, allocation.key, 'odometerKm', event.target.value)}
+                          placeholder="Es. 260778" disabled={disabled || allocation.allocationKey === 'WAREHOUSE'} />
+                      </label>
+                      {line.allocations.length > 1 ? (
+                        <button type="button" className="icon-button expense-allocation-remove"
+                          onClick={() => removeAllocation(line.key, allocation.key)} disabled={disabled}
+                          aria-label={`Rimuovi destinazione ${allocationIndex + 1}`} title="Rimuovi destinazione">
+                          <Trash2 size={16} aria-hidden />
+                        </button>
+                      ) : null}
+                    </div>
+                  ))}
+                </div>
+
+                {!allocationMatches ? (
+                  <p className="form-error expense-allocation-error">
+                    Correggi le quantità: la somma delle destinazioni deve essere {fromQuantityMilli(lineQuantityMilli)} {line.unit}.
+                  </p>
+                ) : null}
+
                 <div className="expense-editor-calculations" aria-label={`Totali operazione ${index + 1}`}>
                   <span>Unitario ivato<strong>{formatEuroCents(unitIvato)}</strong></span>
                   <span>Imponibile<strong>{formatEuroCents(imponibile)}</strong></span>
@@ -362,15 +528,9 @@ export function ExpenseLinesEditor({
           Aggiungi riga
         </button>
         <div className="expense-totals" style={{ display: 'flex', gap: 18, alignItems: 'center' }}>
-          <span>
-            Imponibile <strong>{formatEuroCents(totals.imponibile)}</strong>
-          </span>
-          <span>
-            IVA <strong>{formatEuroCents(totals.vat)}</strong>
-          </span>
-          <span>
-            Totale <strong>{formatEuroCents(totals.total)}</strong>
-          </span>
+          <span>Imponibile <strong>{formatEuroCents(totals.imponibile)}</strong></span>
+          <span>IVA <strong>{formatEuroCents(totals.vat)}</strong></span>
+          <span>Totale <strong>{formatEuroCents(totals.total)}</strong></span>
         </div>
       </div>
     </div>

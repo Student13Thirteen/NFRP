@@ -1,6 +1,7 @@
 import { TripBillingStatus, TripStatus } from '@prisma/client';
 import { Save } from 'lucide-react';
 import { DatePartsInput } from '@/components/DatePartsInput';
+import { RecoverableForm } from '@/components/RecoverableForm';
 import { TripProductRows, type TripProductRowValue } from '@/components/TripProductRows';
 import { getTripBillingStatusLabel, getTripStatusLabel, type TripSelectOption } from '@/lib/trips';
 
@@ -47,6 +48,8 @@ type TripFormProps = {
   showStatus?: boolean;
   submitLabel: string;
   disabled?: boolean;
+  recoverOnError?: boolean;
+  recoveryKey?: string;
 };
 
 function renderOptions(options: TripSelectOption[]) {
@@ -69,10 +72,12 @@ export function TripForm({
   defaultValues,
   showStatus = false,
   submitLabel,
-  disabled = false
+  disabled = false,
+  recoverOnError = false,
+  recoveryKey = 'trip'
 }: TripFormProps) {
   return (
-    <form action={action} className="form-stack">
+    <RecoverableForm action={action} className="form-stack" recoveryKey={recoveryKey} recoverOnError={recoverOnError}>
       <div className="form-section-title">Dati viaggio</div>
       <div className="form-grid">
         <DatePartsInput label="Data viaggio" name="tripDate" defaultValue={defaultValues?.tripDate} required />
@@ -247,6 +252,6 @@ export function TripForm({
         <Save size={16} aria-hidden />
         {submitLabel}
       </button>
-    </form>
+    </RecoverableForm>
   );
 }

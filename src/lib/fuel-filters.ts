@@ -28,7 +28,7 @@ export function filterFuelEntries(entries: FuelEntryWithRelations[], params: Fue
   return entries.filter((entry) => {
     if (entry.status === FuelEntryStatus.PENDING) return false;
     if (params.tractorId && entry.tractorId !== params.tractorId) return false;
-    if (params.driverId && entry.driverId !== params.driverId && entry.tractor?.assignedDriverId !== params.driverId) return false;
+    if (params.driverId && entry.driverId !== params.driverId) return false;
     if (params.fuelSupplierId && entry.fuelSupplierId !== params.fuelSupplierId) return false;
     if (params.fuelCardId && entry.fuelCardId !== params.fuelCardId) return false;
     if (params.fuelProductId && entry.fuelProductId !== params.fuelProductId && entry.productCode !== params.productCode) return false;

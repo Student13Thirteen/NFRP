@@ -100,7 +100,12 @@ export async function POST(request: NextRequest) {
       revalidatePath('/acquisitions');
       revalidatePath('/tolls');
       revalidatePath('/tolls/import/review');
-      return Response.json({ kind, ...result, reviewUrl: '/tolls/import/review' });
+      const reviewUrl = result.importedRows > 0
+        ? '/tolls/import/review'
+        : result.recoverableBatchIds.length === 1
+          ? `/tolls/imports/${encodeURIComponent(result.recoverableBatchIds[0]!)}?status=discarded`
+          : '/tolls?status=discarded';
+      return Response.json({ kind, ...result, reviewUrl });
     }
 
     const result = await importTripWaybillPdfFiles(files);

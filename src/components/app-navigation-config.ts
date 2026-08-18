@@ -2,9 +2,9 @@ import type { LucideIcon } from 'lucide-react';
 import {
   Archive,
   Bell,
-  Palette,
   Bot,
   Boxes,
+  Building2,
   CircleDollarSign,
   ClipboardList,
   FileText,
@@ -13,6 +13,7 @@ import {
   History,
   Landmark,
   MapPinned,
+  Palette,
   Route,
   ScanLine,
   Settings,
@@ -53,6 +54,7 @@ export const navigationGroups: NavigationGroup[] = [
     icon: ClipboardList,
     items: [
       { href: '/trips', label: 'Viaggi', icon: MapPinned, badge: 'trips' },
+      { href: '/customers', label: 'Clienti', icon: Building2 },
       { href: '/documents', label: 'Documenti', icon: FileText },
       { href: '/documents/history', label: 'Storico documenti', icon: History },
       { href: '/documents/disposed', label: 'Documenti mezzi usciti', icon: Archive }
@@ -100,6 +102,7 @@ export const navigationGroups: NavigationGroup[] = [
 
 export function isActivePath(pathname: string, href: string): boolean {
   if (href === '/dashboard') return pathname === '/dashboard';
+  if (href === '/acquisitions') return pathname === '/acquisitions' || pathname.startsWith('/documents/inbox');
   if (href === '/documents') {
     if (pathname.startsWith('/documents/history') || pathname.startsWith('/documents/disposed') || pathname.startsWith('/documents/inbox')) return false;
     return pathname === '/documents' || pathname.startsWith('/documents/new') || /^\/documents\/[^/]+$/.test(pathname);
@@ -115,10 +118,6 @@ export function getActiveNavigationContext(pathname: string): {
   groupLabel: string;
   item: NavigationItem;
 } | null {
-  if (pathname.startsWith('/documents/inbox')) {
-    return { groupId: null, groupLabel: 'NFRP', item: primaryNavigationItems[1] };
-  }
-
   const primaryItem = primaryNavigationItems.find((item) => isActivePath(pathname, item.href));
   if (primaryItem) return { groupId: null, groupLabel: 'NFRP', item: primaryItem };
 

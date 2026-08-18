@@ -236,7 +236,7 @@ export default async function AcquisitionsPage() {
         action={
           <Link className="secondary-button" href="/maintenances/expenses/new">
             <Plus size={16} aria-hidden />
-            Inserimento manuale
+            Nuova fattura / DDT manuale
           </Link>
         }
       />

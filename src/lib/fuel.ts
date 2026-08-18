@@ -3,7 +3,7 @@ import { formatDate } from '@/lib/dates';
 import { getDriverLabel, getVehicleLabel } from '@/lib/trips';
 
 export const fuelEntryInclude = Prisma.validator<Prisma.FuelEntryInclude>()({
-  tractor: { include: { assignedDriver: true } },
+  tractor: true,
   driver: true,
   fuelSupplier: true,
   fuelCard: { include: { fuelSupplier: true } },
@@ -67,7 +67,6 @@ export function formatFuelConsumption(value: number | null | undefined): string 
 
 export function getFuelDriverLabel(entry: Pick<FuelEntryWithRelations, 'driver' | 'tractor'>): string {
   if (entry.driver) return getDriverLabel(entry.driver);
-  if (entry.tractor?.assignedDriver) return getDriverLabel(entry.tractor.assignedDriver);
   return '-';
 }
 

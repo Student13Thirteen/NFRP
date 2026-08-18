@@ -3,7 +3,7 @@ import 'server-only';
 import { Prisma, WarehouseStatus } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { removeStoredPdf } from '@/lib/files';
-import { sumDocumentTotals } from '@/lib/expense';
+import { allocateExpenseLineAmounts, sumDocumentTotals } from '@/lib/expense';
 
 const DEFAULT_WAREHOUSE_CATEGORY = 'Magazzino';
 
@@ -37,36 +37,80 @@ export async function recomputeDocumentTotals(tx: Prisma.TransactionClient, docu
 }
 
 /**
- * Conferma un documento: materializza le righe a magazzino (crea/incrementa WarehouseItem
+ * Conferma un documento: materializza le quote a magazzino (crea/incrementa WarehouseItem
  * + movimento LOAD), ricalcola i totali, azzera reviewReasons, stato -> CONFIRMED.
- * Le righe su targa restano attribuite al mezzo tramite la riga stessa.
+ * Netto e IVA restano quelli della riga contabile e vengono ripartiti al centesimo tra le quote.
  */
-export async function confirmExpenseDocument(documentId: string): Promise<void> {
-  await prisma.$transaction(async (tx) => {
-    const doc = await tx.expenseDocument.findUnique({
+export async function confirmExpenseDocumentInTransaction(
+  tx: Prisma.TransactionClient,
+  documentId: string
+): Promise<void> {
+  // La transizione condizionale fa anche da lock: una doppia richiesta puo
+  // confermare e materializzare il magazzino una sola volta. Se qualcosa
+  // fallisce, l'intera transazione torna PENDING.
+  const claimed = await tx.expenseDocument.updateMany({
+    where: { id: documentId, status: 'PENDING' },
+    data: { status: 'CONFIRMED' }
+  });
+  if (claimed.count === 0) {
+    const existing = await tx.expenseDocument.findUnique({
       where: { id: documentId },
-      include: { lines: true }
+      select: { status: true }
     });
-    if (!doc) throw new Error('Documento di spesa non trovato.');
+    if (!existing) throw new Error('Documento di spesa non trovato.');
+    if (existing.status === 'CONFIRMED') return;
+    throw new Error('Il documento non può essere confermato nello stato corrente.');
+  }
+
+  const doc = await tx.expenseDocument.findUnique({
+    where: { id: documentId },
+    include: { lines: { include: { allocations: { orderBy: { position: 'asc' } } } } }
+  });
+  if (!doc) throw new Error('Documento di spesa non trovato.');
+  for (const line of doc.lines) {
+    let lineAllocations = line.allocations;
+    if (lineAllocations.length === 0) {
+      const created = await tx.expenseLineAllocation.create({
+        data: {
+          expenseLineId: line.id,
+          position: 0,
+          allocationType: line.allocationType,
+          quantityMilli: line.quantityMilli,
+          tractorId: line.tractorId,
+          trailerId: line.trailerId,
+          warehouseItemId: line.warehouseItemId,
+          odometerKm: line.odometerKm
+        }
+      });
+      lineAllocations = [created];
+    }
+
+    if (
+      lineAllocations.some((allocation) => allocation.quantityMilli <= 0) ||
+      lineAllocations.reduce((sum, allocation) => sum + allocation.quantityMilli, 0) !== line.quantityMilli
+    ) {
+      throw new Error(`La ripartizione della riga «${line.description}» non coincide con la quantità fatturata.`);
+    }
     if (
       doc.source === 'MAINTENANCE_IMPORT' &&
-      doc.lines.some((line) => !['WAREHOUSE', 'TRACTOR', 'TRAILER'].includes(line.allocationType))
+      lineAllocations.some((allocation) => !['WAREHOUSE', 'TRACTOR', 'TRAILER'].includes(allocation.allocationType))
     ) {
-      throw new Error('Assegna ogni riga al Magazzino oppure a una targa valida prima di confermare.');
+      throw new Error('Assegna ogni quantità al Magazzino oppure a una targa valida prima di confermare.');
     }
     if (
       doc.source === 'LEASE_INVOICE_IMPORT' &&
-      doc.lines.some((line) => line.allocationType !== 'TRACTOR' && line.allocationType !== 'TRAILER')
+      lineAllocations.some((allocation) => allocation.allocationType !== 'TRACTOR' && allocation.allocationType !== 'TRAILER')
     ) {
       throw new Error('Assegna una targa valida a ogni riga prima di confermare.');
     }
 
-    for (const line of doc.lines) {
-      if (line.allocationType !== 'WAREHOUSE') continue;
-      if (line.warehouseItemId) continue; // già materializzata
-
-      const unitCostCents = unitCostFrom(line.imponibileCents, line.quantityMilli);
-      const quantity = Math.max(0, Math.round(line.quantityMilli / 1000));
+    const allocatedAmounts = allocateExpenseLineAmounts(line, lineAllocations);
+    for (let allocationIndex = 0; allocationIndex < lineAllocations.length; allocationIndex += 1) {
+      const allocation = lineAllocations[allocationIndex];
+      if (allocation.allocationType !== 'WAREHOUSE' || allocation.warehouseItemId) continue;
+      const allocationAmounts = allocatedAmounts[allocationIndex];
+      const unitCostCents = unitCostFrom(allocationAmounts.imponibileCents, allocation.quantityMilli);
+      const quantity = Math.max(0, Math.round(allocation.quantityMilli / 1000));
 
       // Se esiste già un articolo con lo stesso codice, incremento la giacenza.
       const existing = line.code
@@ -100,7 +144,7 @@ export async function confirmExpenseDocument(documentId: string): Promise<void> 
             code: line.code,
             quantity,
             unit: line.unit,
-            amountCents: line.imponibileCents,
+            amountCents: allocationAmounts.imponibileCents,
             unitCostCents,
             vatRatePercent: line.vatRatePercent,
             description: line.description,
@@ -114,24 +158,31 @@ export async function confirmExpenseDocument(documentId: string): Promise<void> 
         data: {
           warehouseItemId,
           type: 'LOAD',
-          quantityMilli: line.quantityMilli,
+          quantityMilli: allocation.quantityMilli,
           unitCostCents,
-          amountCents: line.imponibileCents,
+          amountCents: allocationAmounts.imponibileCents,
           movementDate: doc.registeredAt,
           sourceExpenseLineId: line.id,
           notes: doc.documentNumber ? `Carico da documento ${doc.documentNumber}` : 'Carico da documento di spesa'
         }
       });
 
-      await tx.expenseLine.update({ where: { id: line.id }, data: { warehouseItemId } });
+      await tx.expenseLineAllocation.update({ where: { id: allocation.id }, data: { warehouseItemId } });
+      if (lineAllocations.length === 1) {
+        await tx.expenseLine.update({ where: { id: line.id }, data: { warehouseItemId } });
+      }
     }
+  }
 
-    await recomputeDocumentTotals(tx, documentId);
-    await tx.expenseDocument.update({
-      where: { id: documentId },
-      data: { status: 'CONFIRMED', reviewReasons: null }
-    });
+  await recomputeDocumentTotals(tx, documentId);
+  await tx.expenseDocument.update({
+    where: { id: documentId },
+    data: { reviewReasons: null }
   });
+}
+
+export async function confirmExpenseDocument(documentId: string): Promise<void> {
+  await prisma.$transaction((tx) => confirmExpenseDocumentInTransaction(tx, documentId));
 }
 
 export async function confirmAllPendingExpenses(): Promise<number> {

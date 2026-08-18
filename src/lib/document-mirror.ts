@@ -108,7 +108,7 @@ export function getDocumentMirrorRemotePath(document: MirrorDocument): string {
   const rootFolder = cleanRootFolder(getDocumentMirrorNextcloudFolder());
   const { category, entityName } = entityFolder(document);
   const fileName = cleanFileName([
-    formatDatePart(document.expiryDate),
+    document.expiryDate ? formatDatePart(document.expiryDate) : 'senza-scadenza',
     document.documentType.name,
     document.originalFileName || document.title || 'documento.pdf'
   ].join(' - '));

@@ -6,23 +6,25 @@ import path from 'node:path';
 const prisma = new PrismaClient();
 
 const documentTypes = [
-  ['Patente', EntityType.DRIVER],
-  ['CQC', EntityType.DRIVER],
-  ['Carta tachigrafica', EntityType.DRIVER],
-  ['ADR', EntityType.DRIVER],
-  ['Visita medica', EntityType.DRIVER],
-  ['Libretto/Revisione Trattore', EntityType.TRACTOR],
-  ['Libretto/Revisione Semirimorchio', EntityType.TRAILER],
-  ['Assicurazione Trattore', EntityType.TRACTOR],
-  ['Assicurazione Semirimorchio', EntityType.TRAILER],
-  ['Barrato rosa Trattore', EntityType.TRACTOR],
-  ['Barrato rosa Semirimorchio', EntityType.TRAILER],
-  ['Estintori Trattore', EntityType.TRACTOR],
-  ['Estintori Semirimorchio', EntityType.TRAILER],
-  ['Revisione cronotachigrafo', EntityType.TRACTOR],
-  ['Metrica carburanti', EntityType.OTHER],
-  ['Permesso porto', EntityType.OTHER],
-  ['Altro', EntityType.OTHER]
+  ['Patente', EntityType.DRIVER, true],
+  ['CQC', EntityType.DRIVER, true],
+  ['Carta tachigrafica', EntityType.DRIVER, true],
+  ['ADR', EntityType.DRIVER, true],
+  ['Visita medica', EntityType.DRIVER, true],
+  ['Badge portuale', EntityType.DRIVER, true],
+  ['Libretto/Revisione Trattore', EntityType.TRACTOR, true],
+  ['Libretto/Revisione Semirimorchio', EntityType.TRAILER, true],
+  ['Assicurazione Trattore', EntityType.TRACTOR, true],
+  ['Assicurazione Semirimorchio', EntityType.TRAILER, true],
+  ['Barrato rosa Trattore', EntityType.TRACTOR, true],
+  ['Barrato rosa Semirimorchio', EntityType.TRAILER, true],
+  ['Estintori Trattore', EntityType.TRACTOR, true],
+  ['Estintori Semirimorchio', EntityType.TRAILER, true],
+  ['Revisione cronotachigrafo', EntityType.TRACTOR, true],
+  ['Aggiornamento tachigrafo digitale', EntityType.TRACTOR, false],
+  ['Metrica carburanti', EntityType.OTHER, true],
+  ['Permesso porto', EntityType.OTHER, true],
+  ['Altro', EntityType.OTHER, true]
 ] as const;
 
 function shouldSeedDemoData() {
@@ -50,14 +52,19 @@ async function main() {
     }
   });
 
-  for (const [name, suggestedEntityType] of documentTypes) {
+  for (const [name, suggestedEntityType, expiryRequired] of documentTypes) {
     await prisma.documentType.upsert({
       where: { name },
-      update: {},
+      update: {
+        suggestedEntityType,
+        expiryRequired,
+        active: true
+      },
       create: {
         name,
         suggestedEntityType,
-        defaultNoticeDays: Number(process.env.DEFAULT_NOTICE_DAYS || 30)
+        defaultNoticeDays: Number(process.env.DEFAULT_NOTICE_DAYS || 30),
+        expiryRequired
       }
     });
   }
@@ -90,7 +97,7 @@ async function main() {
       }
     });
 
-    await prisma.tractor.upsert({
+    const seedTractor = await prisma.tractor.upsert({
       where: { plate: 'AB123CD' },
       update: {},
       create: {
@@ -98,6 +105,42 @@ async function main() {
         brand: 'Volvo',
         model: 'FH',
         notes: 'Dato dimostrativo'
+      }
+    });
+
+    await prisma.driverEmploymentPeriod.upsert({
+      where: { id: 'seed-employment-1' },
+      update: {},
+      create: {
+        id: 'seed-employment-1',
+        driverId: 'seed-driver-1',
+        startDate: new Date('2024-01-15'),
+        notes: 'Rapporto di lavoro dimostrativo'
+      }
+    });
+
+    await prisma.driverEmploymentPeriod.upsert({
+      where: { id: 'seed-employment-2' },
+      update: {},
+      create: {
+        id: 'seed-employment-2',
+        driverId: 'seed-driver-2',
+        startDate: new Date('2023-03-01'),
+        endDate: new Date('2025-12-31'),
+        endReason: 'CONTRACT_ENDED',
+        notes: 'Periodo concluso dimostrativo'
+      }
+    });
+
+    await prisma.tractorDriverAssignment.upsert({
+      where: { id: 'seed-assignment-1' },
+      update: {},
+      create: {
+        id: 'seed-assignment-1',
+        tractorId: seedTractor.id,
+        driverId: 'seed-driver-1',
+        validFrom: new Date('2025-01-01'),
+        notes: 'Assegnazione dimostrativa'
       }
     });
 
@@ -120,6 +163,37 @@ async function main() {
         name: 'Porto di esempio',
         category: 'Porto',
         notes: 'Dato dimostrativo'
+      }
+    });
+
+    await prisma.customer.upsert({
+      where: { code: 'CLI-DEMO-001' },
+      update: {},
+      create: {
+        code: 'CLI-DEMO-001',
+        name: 'Cliente Demo S.r.l.',
+        vatNumber: '01234567890',
+        pecEmail: 'cliente-demo@pec.example',
+        address: 'Via Esempio 10',
+        postalCode: '20100',
+        city: 'Milano',
+        province: 'MI',
+        country: 'Italia',
+        notes: 'Anagrafica esclusivamente dimostrativa'
+      }
+    });
+
+    await prisma.supplier.upsert({
+      where: { name: 'Officina Demo S.r.l.' },
+      update: {},
+      create: {
+        name: 'Officina Demo S.r.l.',
+        vatNumber: '09876543210',
+        email: 'amministrazione@officina-demo.example',
+        city: 'Bologna',
+        province: 'BO',
+        country: 'Italia',
+        notes: 'Fornitore esclusivamente dimostrativo'
       }
     });
   }
@@ -170,6 +244,15 @@ async function main() {
     where: { key: 'default_notice_days' },
     update: { value: String(process.env.DEFAULT_NOTICE_DAYS || 30) },
     create: { key: 'default_notice_days', value: String(process.env.DEFAULT_NOTICE_DAYS || 30) }
+  });
+
+  await prisma.category.upsert({
+    where: { name: 'Lavaggio' },
+    update: { active: true },
+    create: {
+      name: 'Lavaggio',
+      notes: 'Lavaggio esterno, interno, cisterna o sanificazione del mezzo.'
+    }
   });
 
   await prisma.appSetting.upsert({

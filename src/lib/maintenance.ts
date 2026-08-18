@@ -119,19 +119,13 @@ export function buildMaintenanceDriverOptions(
 }
 
 export function buildMaintenanceVehicleOptions(
-  tractors: Array<
-    Pick<Tractor, 'id' | 'plate' | 'brand' | 'model' | 'active'> & {
-      assignedDriver?: Pick<Driver, 'firstName' | 'lastName'> | null;
-    }
-  >,
+  tractors: Array<Pick<Tractor, 'id' | 'plate' | 'brand' | 'model' | 'active'>>,
   trailers: Array<Pick<Trailer, 'id' | 'plate' | 'brand' | 'model' | 'active'>>
 ): MaintenanceVehicleOption[] {
   const tractorOptions = tractors.map((tractor) => ({
     id: tractor.id,
     value: `TRACTOR:${tractor.id}`,
-    label: `Trattore ${getVehicleLabel(tractor)}${
-      tractor.assignedDriver ? ` · autista ${getDriverLabel(tractor.assignedDriver)}` : ''
-    }`,
+    label: `Trattore ${getVehicleLabel(tractor)}`,
     active: tractor.active
   }));
   const trailerOptions = trailers.map((trailer) => ({

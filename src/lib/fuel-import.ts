@@ -1,9 +1,10 @@
 import 'server-only';
 
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import pdfParse from 'pdf-parse/lib/pdf-parse.js';
 import { FuelEntryStatus, Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
+import { getDatedDriverMap, getDriverIdForTractorAtDate } from '@/lib/driver-assignments';
 import { optionalFormString } from '@/lib/form';
 import { readStoredPdf, removeStoredPdf, storePdfBuffer, storePdfFile, type StoredPdf } from '@/lib/files';
 import {
@@ -93,11 +94,11 @@ async function getTractorAssignments(tx: PrismaClientOrTx, plates: string[]) {
   const [tractors, trailers] = await Promise.all([
     tx.tractor.findMany({
       where: { plate: { in: plates, mode: 'insensitive' } },
-      include: { assignedDriver: true }
+      select: { id: true, plate: true }
     }),
     tx.trailer.findMany({
       where: { plate: { in: plates, mode: 'insensitive' } },
-      include: { assignedTractor: { include: { assignedDriver: true } } }
+      include: { assignedTractor: { select: { id: true } } }
     })
   ]);
 
@@ -106,7 +107,7 @@ async function getTractorAssignments(tx: PrismaClientOrTx, plates: string[]) {
   for (const tractor of tractors) {
     assignments.set(compactPlate(tractor.plate), {
       tractorId: tractor.id,
-      driverId: tractor.assignedDriverId || null
+      driverId: null
     });
   }
 
@@ -115,7 +116,7 @@ async function getTractorAssignments(tx: PrismaClientOrTx, plates: string[]) {
     if (assignments.has(key)) continue;
     assignments.set(key, {
       tractorId: trailer.assignedTractorId || null,
-      driverId: trailer.assignedTractor?.assignedDriverId || null
+      driverId: null
     });
   }
 
@@ -146,13 +147,13 @@ async function ensureMissingTractors(
 
   const created = await tx.tractor.findMany({
     where: { plate: { in: missing, mode: 'insensitive' } },
-    select: { id: true, plate: true, assignedDriverId: true }
+    select: { id: true, plate: true }
   });
 
   for (const tractor of created) {
     assignments.set(compactPlate(tractor.plate), {
       tractorId: tractor.id,
-      driverId: tractor.assignedDriverId || null
+      driverId: null
     });
   }
 
@@ -485,6 +486,14 @@ async function createFuelEntriesFromStoredPdf(
     const fuelCardIds = await ensureFuelCards(tx, fuelSupplier.id, parsedInvoice.rows, tractorAssignments);
     const fuelProductIds = await ensureFuelProducts(tx, parsedInvoice.rows);
     const tripDriverAssignments = await getTripDriverAssignments(tx, parsedInvoice.rows, tractorAssignments);
+    const tractorIds = Array.from(new Set(
+      Array.from(tractorAssignments.values()).map((assignment) => assignment.tractorId).filter(Boolean)
+    )) as string[];
+    const datedDriverAssignments = await getDatedDriverMap(
+      tx,
+      tractorIds,
+      parsedInvoice.rows.map((row) => row.fuelDate)
+    );
     const totalVolumeLitersMilli = parsedInvoice.rows.reduce((sum, row) => sum + row.volumeLitersMilli, 0);
     const totalAmountCents = parsedInvoice.rows.reduce((sum, row) => sum + row.totalAmountCents, 0);
 
@@ -510,6 +519,9 @@ async function createFuelEntriesFromStoredPdf(
       const tripDriverId = assignment?.tractorId
         ? tripDriverAssignments.get(`${assignment.tractorId}|${dateKey(row.fuelDate)}`) || null
         : null;
+      const datedDriverId = assignment?.tractorId
+        ? datedDriverAssignments.get(`${assignment.tractorId}|${dateKey(row.fuelDate)}`) || null
+        : null;
 
       return buildEntryData({
         row,
@@ -519,7 +531,7 @@ async function createFuelEntriesFromStoredPdf(
         fuelCardId: fuelCardIds.get(row.cardNumber) || null,
         fuelProductId: fuelProductIds.get(row.productCode) || null,
         tractorId: assignment?.tractorId || null,
-        driverId: assignment?.driverId || tripDriverId
+        driverId: datedDriverId || tripDriverId
       });
     });
 
@@ -681,7 +693,16 @@ export async function assignFuelCardToPendingBatch(batchId: string, formData: Fo
 async function getPendingEntries(where: Prisma.FuelEntryWhereInput) {
   return prisma.fuelEntry.findMany({
     where: { ...where, status: FuelEntryStatus.PENDING },
-    select: { id: true, plate: true, serviceType: true, fuelCardId: true, cardNumber: true }
+    select: {
+      id: true,
+      plate: true,
+      fuelDate: true,
+      tractorId: true,
+      driverId: true,
+      serviceType: true,
+      fuelCardId: true,
+      cardNumber: true
+    }
   });
 }
 
@@ -695,6 +716,19 @@ async function confirmPendingEntries(where: Prisma.FuelEntryWhereInput): Promise
     throw new Error(
       `Associa una tessera o provenienza alle ${missingCardRows.length} righe WinSoftware prima di confermare.`
     );
+  }
+  const entriesWithoutDriver = entries.filter((entry) => entry.tractorId && !entry.driverId);
+  if (entriesWithoutDriver.length > 0) {
+    const datedDrivers = await getDatedDriverMap(
+      prisma,
+      Array.from(new Set(entriesWithoutDriver.map((entry) => entry.tractorId).filter(Boolean))) as string[],
+      entriesWithoutDriver.map((entry) => entry.fuelDate)
+    );
+    for (const entry of entriesWithoutDriver) {
+      if (!entry.tractorId) continue;
+      const driverId = datedDrivers.get(`${entry.tractorId}|${dateKey(entry.fuelDate)}`);
+      if (driverId) await prisma.fuelEntry.update({ where: { id: entry.id }, data: { driverId } });
+    }
   }
   // Le porto fuori dallo stato PENDING; il ricalcolo assegna OK/NEEDS_REVIEW finale
   // e le inserisce nella catena km della targa.
@@ -870,17 +904,17 @@ async function getFuelSupplierAndCardFromForm(formData: FormData) {
   };
 }
 
-async function getTractorAndDriverFromForm(formData: FormData) {
+async function getTractorAndDriverFromForm(formData: FormData, fuelDate: Date) {
   const tractorId = optionalFormString(formData, 'tractorId');
   if (!tractorId) throw new Error('Targa trattore obbligatoria.');
 
   const tractor = await prisma.tractor.findUnique({
     where: { id: tractorId },
-    include: { assignedDriver: true }
+    select: { id: true, plate: true }
   });
   if (!tractor) throw new Error('Targa trattore non valida.');
 
-  const driverId = optionalFormString(formData, 'driverId') || tractor.assignedDriverId || null;
+  const driverId = optionalFormString(formData, 'driverId') || await getDriverIdForTractorAtDate(prisma, tractor.id, fuelDate);
   await assertDriver(driverId);
   return { tractor, driverId };
 }
@@ -900,13 +934,14 @@ function buildFuelEntryWriteData(input: {
   product: { id: string; code: string; name: string };
   fuelSupplier: { id: string; name: string } | null;
   fuelCard: { id: string; cardNumber: string } | null;
+  fuelDate: Date;
 }) {
   const volumeLitersMilli = parseManualLitersMilli(input.formData);
   const { totalAmountCents, grossPricePerLiterMilliEuro } = calculateManualAmounts(input.formData, volumeLitersMilli);
   const ticketNumber = getRecordTicketNumber(input.formData);
 
   return {
-    fuelDate: parseManualDate(String(input.formData.get('fuelDate') || '')),
+    fuelDate: input.fuelDate,
     fuelTime: parseManualTime(optionalFormString(input.formData, 'fuelTime')),
     fuelSupplierId: input.fuelSupplier?.id || null,
     fuelCardId: input.fuelCard?.id || null,
@@ -934,41 +969,63 @@ function buildFuelEntryWriteData(input: {
 }
 
 export async function updateFuelEntryFromForm(id: string, formData: FormData) {
-  const entry = await prisma.fuelEntry.findUnique({ where: { id }, select: { id: true, plate: true } });
-  if (!entry) throw new Error('Rifornimento non trovato.');
-
+  const fuelDate = parseManualDate(String(formData.get('fuelDate') || ''));
   const [{ tractor, driverId }, product, { fuelSupplier, fuelCard }] = await Promise.all([
-    getTractorAndDriverFromForm(formData),
+    getTractorAndDriverFromForm(formData, fuelDate),
     getFuelProductFromForm(formData),
     getFuelSupplierAndCardFromForm(formData)
   ]);
 
-  await prisma.fuelEntry.update({
-    where: { id },
-    data: buildFuelEntryWriteData({ formData, tractor, driverId, product, fuelSupplier, fuelCard })
-  });
+  return prisma.$transaction(async (tx) => {
+    const entry = await tx.fuelEntry.findUnique({ where: { id }, select: { id: true, plate: true } });
+    if (!entry) throw new Error('Rifornimento non trovato.');
 
-  await recalculateFuelMetricsForPlates(prisma, [entry.plate, tractor.plate]);
-  return prisma.fuelEntry.findUniqueOrThrow({ where: { id } });
+    await tx.fuelEntry.update({
+      where: { id },
+      data: buildFuelEntryWriteData({ formData, tractor, driverId, product, fuelSupplier, fuelCard, fuelDate })
+    });
+
+    await recalculateFuelMetricsForPlates(tx, [entry.plate, tractor.plate]);
+    return tx.fuelEntry.findUniqueOrThrow({ where: { id } });
+  });
 }
 
 export async function createManualFuelEntryFromForm(formData: FormData) {
+  const fuelDate = parseManualDate(String(formData.get('fuelDate') || ''));
   const [{ tractor, driverId }, product, { fuelSupplier, fuelCard }] = await Promise.all([
-    getTractorAndDriverFromForm(formData),
+    getTractorAndDriverFromForm(formData, fuelDate),
     getFuelProductFromForm(formData),
     getFuelSupplierAndCardFromForm(formData)
   ]);
+  const writeData = buildFuelEntryWriteData({ formData, tractor, driverId, product, fuelSupplier, fuelCard, fuelDate });
+  const submittedKey = optionalFormString(formData, 'submissionKey');
+  const submissionKey = submittedKey && /^[a-z0-9-]{16,80}$/i.test(submittedKey) ? submittedKey : randomUUID();
+  const payloadDigest = createHash('sha256').update(JSON.stringify(writeData)).digest('hex').slice(0, 32);
+  const sourceKey = `manual:${submissionKey}:${payloadDigest}`;
 
-  const entry = await prisma.fuelEntry.create({
-    data: {
-      sourceKey: `manual:${randomUUID()}`,
-      manualEntry: true,
-      ...buildFuelEntryWriteData({ formData, tractor, driverId, product, fuelSupplier, fuelCard })
+  try {
+    return await prisma.$transaction(async (tx) => {
+      const existing = await tx.fuelEntry.findUnique({ where: { sourceKey } });
+      if (existing) return existing;
+
+      const entry = await tx.fuelEntry.create({
+        data: {
+          sourceKey,
+          manualEntry: true,
+          ...writeData
+        }
+      });
+
+      await recalculateFuelMetricsForPlates(tx, [tractor.plate]);
+      return entry;
+    });
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+      const existing = await prisma.fuelEntry.findUnique({ where: { sourceKey } });
+      if (existing) return existing;
     }
-  });
-
-  await recalculateFuelMetricsForPlates(prisma, [tractor.plate]);
-  return entry;
+    throw error;
+  }
 }
 
 export function getFuelActionErrorMessage(error: unknown): string {

@@ -6,6 +6,7 @@ import { prisma } from '@/lib/db';
 import { emptyStoredPdf, removeStoredPdf, storePdfFile, type NullableStoredPdf, type StoredPdf } from '@/lib/files';
 import { formatDate } from '@/lib/dates';
 import { formBoolean, formString, optionalFormString } from '@/lib/form';
+import { optionalPecEmailSchema, optionalTaxCodeSchema, optionalVatNumberSchema } from '@/lib/fiscal-data';
 
 const warehouseItemSchema = z.object({
   title: z.string().min(1, 'Titolo richiesto.').max(180),
@@ -38,6 +39,9 @@ const warehouseSupplierSchema = z.object({
   name: z.string().min(1, 'Nome fornitore richiesto.').max(180),
   phone: z.string().max(80).nullable(),
   email: z.string().max(160).nullable(),
+  vatNumber: optionalVatNumberSchema,
+  taxCode: optionalTaxCodeSchema,
+  pecEmail: optionalPecEmailSchema,
   address: z.string().max(240).nullable(),
   postalCode: z.string().max(20).nullable(),
   city: z.string().max(120).nullable(),
@@ -238,6 +242,9 @@ export function parseWarehouseSupplierForm(formData: FormData) {
     name: formString(formData, 'name'),
     phone: optionalFormString(formData, 'phone'),
     email: optionalFormString(formData, 'email'),
+    vatNumber: formString(formData, 'vatNumber'),
+    taxCode: formString(formData, 'taxCode'),
+    pecEmail: formString(formData, 'pecEmail'),
     address: optionalFormString(formData, 'address'),
     postalCode: optionalFormString(formData, 'postalCode'),
     city: optionalFormString(formData, 'city'),

@@ -1,8 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Plus, Trash2 } from 'lucide-react';
 import { ContainerTripStopKind } from '@prisma/client';
+import { FORM_DRAFT_RESTORE_EVENT, formDraftFromEvent } from '@/lib/form-draft';
 
 export type ContainerRowValue = {
   containerNumber?: string | null;
@@ -33,13 +34,40 @@ const stopKindLabels: Record<ContainerTripStopKind, string> = {
 };
 
 export function ContainerRows({ defaultRows = [] }: { defaultRows?: ContainerRowValue[] }) {
+  const fieldsetRef = useRef<HTMLDivElement>(null);
   const [nextKey, setNextKey] = useState(defaultRows.length + 1);
   const [rows, setRows] = useState<Keyed<ContainerRowValue>[]>(() => (
     (defaultRows.length > 0 ? defaultRows : [{}]).map((row, key) => ({ ...row, key }))
   ));
 
+  useEffect(() => {
+    const form = fieldsetRef.current?.closest('form');
+    if (!form) return;
+    const restore = (event: Event) => {
+      const values = formDraftFromEvent(event)?.values;
+      if (!values) return;
+      const rowCount = Math.max(
+        values.containerNumber?.length || 0,
+        values.containerType?.length || 0,
+        values.sealNumber?.length || 0,
+        values.containerNotes?.length || 0
+      );
+      if (rowCount === 0) return;
+      setRows(Array.from({ length: rowCount }, (_, index) => ({
+        key: index,
+        containerNumber: values.containerNumber?.[index] || '',
+        containerType: values.containerType?.[index] || '',
+        sealNumber: values.sealNumber?.[index] || '',
+        notes: values.containerNotes?.[index] || ''
+      })));
+      setNextKey(rowCount + 1);
+    };
+    form.addEventListener(FORM_DRAFT_RESTORE_EVENT, restore);
+    return () => form.removeEventListener(FORM_DRAFT_RESTORE_EVENT, restore);
+  }, []);
+
   return (
-    <div className="trip-product-fieldset">
+    <div className="trip-product-fieldset" ref={fieldsetRef}>
       <div className="trip-product-list">
         {rows.map((row, index) => (
           <div className="trip-product-row" key={row.key}>
@@ -88,13 +116,49 @@ export function ContainerRows({ defaultRows = [] }: { defaultRows?: ContainerRow
 }
 
 export function ContainerStopRows({ defaultRows = [] }: { defaultRows?: ContainerStopRowValue[] }) {
+  const fieldsetRef = useRef<HTMLDivElement>(null);
   const [nextKey, setNextKey] = useState(defaultRows.length + 1);
   const [rows, setRows] = useState<Keyed<ContainerStopRowValue>[]>(() => (
     (defaultRows.length > 0 ? defaultRows : [{ kind: ContainerTripStopKind.PICKUP }]).map((row, key) => ({ ...row, key }))
   ));
 
+  useEffect(() => {
+    const form = fieldsetRef.current?.closest('form');
+    if (!form) return;
+    const restore = (event: Event) => {
+      const values = formDraftFromEvent(event)?.values;
+      if (!values) return;
+      const rowCount = Math.max(
+        values.stopKind?.length || 0,
+        values.stopName?.length || 0,
+        values.stopAddress?.length || 0,
+        values.stopCity?.length || 0
+      );
+      if (rowCount === 0) return;
+      setRows(Array.from({ length: rowCount }, (_, index) => {
+        const recoveredKind = values.stopKind?.[index] as ContainerTripStopKind | undefined;
+        return {
+          key: index,
+          kind: recoveredKind && Object.values(ContainerTripStopKind).includes(recoveredKind)
+            ? recoveredKind
+            : ContainerTripStopKind.PICKUP,
+          name: values.stopName?.[index] || '',
+          address: values.stopAddress?.[index] || '',
+          postalCode: values.stopPostalCode?.[index] || '',
+          city: values.stopCity?.[index] || '',
+          province: values.stopProvince?.[index] || '',
+          plannedTime: values.stopPlannedTime?.[index] || '',
+          notes: values.stopNotes?.[index] || ''
+        };
+      }));
+      setNextKey(rowCount + 1);
+    };
+    form.addEventListener(FORM_DRAFT_RESTORE_EVENT, restore);
+    return () => form.removeEventListener(FORM_DRAFT_RESTORE_EVENT, restore);
+  }, []);
+
   return (
-    <div className="trip-product-fieldset">
+    <div className="trip-product-fieldset" ref={fieldsetRef}>
       <div className="trip-product-list">
         {rows.map((row, index) => (
           <div className="panel" key={row.key} style={{ padding: 14 }}>
@@ -168,4 +232,3 @@ export function ContainerStopRows({ defaultRows = [] }: { defaultRows?: Containe
     </div>
   );
 }
-

@@ -8,9 +8,11 @@ import {
   confirmAllPendingTolls,
   confirmAllPendingTollsForBatch,
   confirmTollEntry,
-  deleteAllPendingTolls,
-  deleteAllPendingTollsForBatch,
-  deletePendingTollEntry
+  discardAllPendingTolls,
+  discardAllPendingTollsForBatch,
+  discardPendingTollEntry,
+  restoreAllDiscardedTollsForBatch,
+  restoreDiscardedTollEntry
 } from '@/lib/toll-import';
 import { setFlashMessage } from '@/lib/flash';
 
@@ -29,9 +31,9 @@ export async function confirmTollEntryReviewAction(id: string) {
   redirect(REVIEW_PATH);
 }
 
-export async function deletePendingTollEntryReviewAction(id: string) {
+export async function discardPendingTollEntryReviewAction(id: string) {
   await requireUser();
-  await deletePendingTollEntry(id);
+  await discardPendingTollEntry(id);
   revalidatePath(REVIEW_PATH);
   revalidatePath('/tolls');
   redirect(REVIEW_PATH);
@@ -48,9 +50,9 @@ export async function confirmTollEntryDetailAction(batchId: string, id: string) 
   redirect(detailPath(batchId));
 }
 
-export async function deletePendingTollEntryDetailAction(batchId: string, id: string) {
+export async function discardPendingTollEntryDetailAction(batchId: string, id: string) {
   await requireUser();
-  await deletePendingTollEntry(id);
+  await discardPendingTollEntry(id);
   revalidatePath(REVIEW_PATH);
   revalidatePath('/tolls');
   revalidatePath(detailPath(batchId));
@@ -71,15 +73,15 @@ export async function confirmTollBatchReviewAction(batchId: string) {
   redirect(REVIEW_PATH);
 }
 
-export async function deleteTollBatchReviewAction(batchId: string) {
+export async function discardTollBatchReviewAction(batchId: string) {
   await requireUser();
-  const deleted = await deleteAllPendingTollsForBatch(batchId);
+  const discarded = await discardAllPendingTollsForBatch(batchId);
   revalidatePath(REVIEW_PATH);
   revalidatePath('/tolls');
   await setFlashMessage({
     type: 'success',
-    title: 'Righe autostrade eliminate',
-    message: `${deleted} righe importate sono state scartate.`
+    title: 'Righe autostrade scartate',
+    message: `${discarded} righe sono uscite dalla coda e restano recuperabili nello storico del file.`
   });
   redirect(REVIEW_PATH);
 }
@@ -100,16 +102,16 @@ export async function confirmTollBatchDetailAction(batchId: string) {
   redirect(detailPath(batchId));
 }
 
-export async function deleteTollBatchDetailAction(batchId: string) {
+export async function discardTollBatchDetailAction(batchId: string) {
   await requireUser();
-  const deleted = await deleteAllPendingTollsForBatch(batchId);
+  const discarded = await discardAllPendingTollsForBatch(batchId);
   revalidatePath(REVIEW_PATH);
   revalidatePath('/tolls');
   revalidatePath(detailPath(batchId));
   await setFlashMessage({
     type: 'success',
     title: 'File autostrade scartato',
-    message: `${deleted} pedaggi in attesa sono stati eliminati.`
+    message: `${discarded} pedaggi sono usciti dalla coda e possono essere ripristinati dalla scheda del file.`
   });
   redirect('/tolls');
 }
@@ -128,15 +130,38 @@ export async function confirmAllPendingTollsReviewAction() {
   redirect('/tolls');
 }
 
-export async function deleteAllPendingTollsReviewAction() {
+export async function discardAllPendingTollsReviewAction() {
   await requireUser();
-  const deleted = await deleteAllPendingTolls();
+  const discarded = await discardAllPendingTolls();
   revalidatePath(REVIEW_PATH);
   revalidatePath('/tolls');
   await setFlashMessage({
     type: 'success',
-    title: 'Righe autostrade eliminate',
-    message: `${deleted} righe importate sono state scartate.`
+    title: 'Righe autostrade scartate',
+    message: `${discarded} righe sono uscite dalla coda e restano recuperabili nelle schede dei file.`
   });
   redirect('/tolls');
+}
+
+export async function restoreDiscardedTollEntryDetailAction(batchId: string, id: string) {
+  await requireUser();
+  await restoreDiscardedTollEntry(id);
+  revalidatePath(REVIEW_PATH);
+  revalidatePath('/tolls');
+  revalidatePath(detailPath(batchId));
+  redirect(detailPath(batchId));
+}
+
+export async function restoreTollBatchDetailAction(batchId: string) {
+  await requireUser();
+  const restored = await restoreAllDiscardedTollsForBatch(batchId);
+  revalidatePath(REVIEW_PATH);
+  revalidatePath('/tolls');
+  revalidatePath(detailPath(batchId));
+  await setFlashMessage({
+    type: 'success',
+    title: 'Pedaggi ripristinati',
+    message: `${restored} righe sono tornate nella coda da controllare.`
+  });
+  redirect(detailPath(batchId));
 }

@@ -6,7 +6,7 @@ export type ChecklistDocumentType = {
 export type ChecklistDocument = {
   id: string;
   documentTypeId: string;
-  expiryDate: Date;
+  expiryDate: Date | null;
   filePath: string | null;
 };
 
@@ -18,7 +18,7 @@ export type DocumentChecklistItem = ChecklistDocumentType & {
   insertedCount: number;
   latestDocument: {
     id: string;
-    expiryDate: Date;
+    expiryDate: Date | null;
     hasFile: boolean;
   } | null;
   status: 'inserted' | 'missing' | 'excluded';
@@ -43,7 +43,9 @@ export function buildDocumentChecklist(
     insertedCounts.set(document.documentTypeId, (insertedCounts.get(document.documentTypeId) || 0) + 1);
 
     const currentLatest = latestDocuments.get(document.documentTypeId);
-    if (!currentLatest || document.expiryDate.getTime() > currentLatest.expiryDate.getTime()) {
+    const documentSortTime = document.expiryDate?.getTime() ?? Number.MAX_SAFE_INTEGER;
+    const currentSortTime = currentLatest?.expiryDate?.getTime() ?? Number.MIN_SAFE_INTEGER;
+    if (!currentLatest || documentSortTime > currentSortTime) {
       latestDocuments.set(document.documentTypeId, document);
     }
   }

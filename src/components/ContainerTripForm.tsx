@@ -2,6 +2,7 @@ import { ContainerTripStatus, TripBillingStatus } from '@prisma/client';
 import { Save } from 'lucide-react';
 import { ContainerRows, ContainerStopRows, type ContainerRowValue, type ContainerStopRowValue } from '@/components/ContainerTripRows';
 import { DatePartsInput } from '@/components/DatePartsInput';
+import { RecoverableForm } from '@/components/RecoverableForm';
 import { getContainerTripStatusLabel, getTripBillingStatusLabel } from '@/lib/container-trips';
 import type { TripSelectOption } from '@/lib/trips';
 
@@ -11,6 +12,7 @@ export type ContainerTripFormValues = {
   billingStatus?: TripBillingStatus;
   waybillNumber?: string | null;
   waybillDate?: string;
+  customerId?: string | null;
   customerCode?: string | null;
   customerName?: string | null;
   customerReference?: string | null;
@@ -45,9 +47,12 @@ type Props = {
   drivers: TripSelectOption[];
   tractors: TripSelectOption[];
   trailers: TripSelectOption[];
+  customers: TripSelectOption[];
   defaultValues?: ContainerTripFormValues;
   showStatus?: boolean;
   submitLabel: string;
+  recoverOnError?: boolean;
+  recoveryKey?: string;
 };
 
 function options(values: TripSelectOption[]) {
@@ -56,7 +61,18 @@ function options(values: TripSelectOption[]) {
   ));
 }
 
-export function ContainerTripForm({ action, drivers, tractors, trailers, defaultValues, showStatus = false, submitLabel }: Props) {
+export function ContainerTripForm({
+  action,
+  drivers,
+  tractors,
+  trailers,
+  customers,
+  defaultValues,
+  showStatus = false,
+  submitLabel,
+  recoverOnError = false,
+  recoveryKey = 'container-trip'
+}: Props) {
   const draftStatuses: ContainerTripStatus[] = [
     ContainerTripStatus.PLANNED,
     ContainerTripStatus.IN_PROGRESS,
@@ -70,7 +86,7 @@ export function ContainerTripForm({ action, drivers, tractors, trailers, default
     : draftStatuses;
 
   return (
-    <form action={action} className="form-stack">
+    <RecoverableForm action={action} className="form-stack" recoveryKey={recoveryKey} recoverOnError={recoverOnError}>
       <div className="form-section-title">Identificazione e committente</div>
       <div className="form-grid">
         <DatePartsInput label="Data viaggio" name="tripDate" defaultValue={defaultValues?.tripDate} required />
@@ -80,11 +96,19 @@ export function ContainerTripForm({ action, drivers, tractors, trailers, default
         </label>
         <DatePartsInput label="Data lettera di vettura" name="waybillDate" defaultValue={defaultValues?.waybillDate} />
         <label>
-          Codice committente
+          Cliente in anagrafica
+          <select name="customerId" defaultValue={defaultValues?.customerId || ''}>
+            <option value="">Nuovo / non ancora registrato</option>
+            {options(customers)}
+          </select>
+          <span className="field-help">Se selezionato, ragione sociale e codice dell&apos;anagrafica hanno la precedenza.</span>
+        </label>
+        <label>
+          Codice nuovo committente
           <input name="customerCode" defaultValue={defaultValues?.customerCode || ''} />
         </label>
         <label>
-          Nome committente
+          Nome nuovo committente
           <input name="customerName" defaultValue={defaultValues?.customerName || ''} />
         </label>
         <label>
@@ -250,6 +274,6 @@ export function ContainerTripForm({ action, drivers, tractors, trailers, default
         <Save size={16} aria-hidden />
         {submitLabel}
       </button>
-    </form>
+    </RecoverableForm>
   );
 }

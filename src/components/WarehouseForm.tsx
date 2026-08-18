@@ -2,6 +2,8 @@ import { WarehouseStatus } from '@prisma/client';
 import { Save } from 'lucide-react';
 import { DatePartsInput } from '@/components/DatePartsInput';
 import { FileUpload } from '@/components/FileUpload';
+import { QuickSupplierField } from '@/components/QuickSupplierField';
+import { RecoverableForm } from '@/components/RecoverableForm';
 import { getWarehouseStatusLabel, type WarehouseSelectOption } from '@/lib/warehouse';
 
 type WarehouseFormValues = {
@@ -31,6 +33,8 @@ type WarehouseFormProps = {
   showStatus?: boolean;
   fileLabel?: string;
   disabled?: boolean;
+  recoverOnError?: boolean;
+  recoveryKey?: string;
 };
 
 function renderOptions(options: WarehouseSelectOption[]) {
@@ -50,10 +54,19 @@ export function WarehouseForm({
   submitLabel,
   showStatus = false,
   fileLabel = 'PDF documento opzionale',
-  disabled = false
+  disabled = false,
+  recoverOnError = false,
+  recoveryKey = 'warehouse'
 }: WarehouseFormProps) {
   return (
-    <form action={action} method={typeof action === 'string' ? 'post' : undefined} className="form-stack" encType="multipart/form-data">
+    <RecoverableForm
+      action={action}
+      method={typeof action === 'string' ? 'post' : undefined}
+      className="form-stack"
+      encType="multipart/form-data"
+      recoveryKey={recoveryKey}
+      recoverOnError={recoverOnError}
+    >
       <div className="form-section-title">Materiale</div>
       <div className="form-grid">
         <DatePartsInput label="Data carico" name="stockedAt" defaultValue={defaultValues?.stockedAt} required />
@@ -64,13 +77,12 @@ export function WarehouseForm({
             {renderOptions(categories)}
           </select>
         </label>
-        <label>
-          Fornitore
-          <select name="supplierId" defaultValue={defaultValues?.supplierId || ''} disabled={disabled}>
-            <option value="">Non indicato</option>
-            {renderOptions(suppliers)}
-          </select>
-        </label>
+        <QuickSupplierField
+          options={suppliers}
+          defaultValue={defaultValues?.supplierId}
+          disabled={disabled}
+          label="Fornitore"
+        />
       </div>
       <input name="location" type="hidden" defaultValue={defaultValues?.location || ''} />
       <input name="code" type="hidden" defaultValue={defaultValues?.code || ''} />
@@ -139,6 +151,6 @@ export function WarehouseForm({
         <Save size={16} aria-hidden />
         {submitLabel}
       </button>
-    </form>
+    </RecoverableForm>
   );
 }

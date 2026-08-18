@@ -166,6 +166,7 @@ enum TollEntryStatus {
   OK
   NEEDS_REVIEW
   VERIFIED
+  DISCARDED
 }
 
 enum VehicleLifecycleStatus {
@@ -173,6 +174,14 @@ enum VehicleLifecycleStatus {
   INACTIVE
   SOLD
   SCRAPPED
+}
+
+enum DriverEmploymentEndReason {
+  RESIGNATION
+  DISMISSAL
+  PROBATION_FAILED
+  CONTRACT_ENDED
+  OTHER
 }
 
 model User {
@@ -193,6 +202,7 @@ model Driver {
   notes                         String?
   active                        Boolean                        @default(true)
   assignedTractors              Tractor[]                      @relation("TractorAssignedDriver")
+  tractorAssignments            TractorDriverAssignment[]
   documents                     Document[]
   documentRequirementExclusions DocumentRequirementExclusion[]
   trips                         Trip[]
@@ -200,10 +210,25 @@ model Driver {
   tripImportRows                TripImportRow[]
   maintenances                  Maintenance[]
   fuelEntries                   FuelEntry[]
+  employmentPeriods             DriverEmploymentPeriod[]
   createdAt                     DateTime                       @default(now())
   updatedAt                     DateTime                       @updatedAt
 
   @@index([lastName, firstName])
+}
+
+model DriverEmploymentPeriod {
+  id        String                     @id @default(cuid())
+  driverId  String
+  driver    Driver                     @relation(fields: [driverId], references: [id], onDelete: Cascade)
+  startDate DateTime                   @db.Date
+  endDate   DateTime?                  @db.Date
+  endReason DriverEmploymentEndReason?
+  notes     String?
+  createdAt DateTime                   @default(now())
+  updatedAt DateTime                   @updatedAt
+
+  @@index([driverId, startDate, endDate])
 }
 
 model Tractor {
@@ -217,6 +242,7 @@ model Tractor {
   lifecycleEndedAt              DateTime?                      @db.Date
   assignedDriverId              String?
   assignedDriver                Driver?                        @relation("TractorAssignedDriver", fields: [assignedDriverId], references: [id], onDelete: SetNull)
+  driverAssignments             TractorDriverAssignment[]
   assignedTrailers              Trailer[]                      @relation("TrailerAssignedTractor")
   fuelCards                     FuelCard[]
   documents                     Document[]
@@ -229,6 +255,7 @@ model Tractor {
   tollCards                     TollCard[]
   tollEntries                   TollEntry[]
   expenseLines                  ExpenseLine[]
+  expenseLineAllocations        ExpenseLineAllocation[]
   leaseContracts                LeaseContract[]
   warehouseMovements            WarehouseMovement[]
   createdAt                     DateTime                       @default(now())
@@ -236,6 +263,22 @@ model Tractor {
 
   @@index([assignedDriverId])
   @@index([lifecycleStatus])
+}
+
+model TractorDriverAssignment {
+  id        String   @id @default(cuid())
+  tractorId String
+  tractor   Tractor  @relation(fields: [tractorId], references: [id], onDelete: Cascade)
+  driverId  String
+  driver    Driver   @relation(fields: [driverId], references: [id], onDelete: Restrict)
+  validFrom DateTime @db.Date
+  validTo   DateTime? @db.Date
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tractorId, validFrom, validTo])
+  @@index([driverId, validFrom, validTo])
 }
 
 model Trailer {
@@ -256,6 +299,7 @@ model Trailer {
   tripImportRows                TripImportRow[]
   maintenances                  Maintenance[]
   expenseLines                  ExpenseLine[]
+  expenseLineAllocations        ExpenseLineAllocation[]
   leaseContracts                LeaseContract[]
   warehouseMovements            WarehouseMovement[]
   createdAt                     DateTime                       @default(now())
@@ -284,6 +328,7 @@ model DocumentType {
   name                String                         @unique
   suggestedEntityType EntityType
   defaultNoticeDays   Int                            @default(30)
+  expiryRequired      Boolean                        @default(true)
   active              Boolean                        @default(true)
   documents           Document[]
   exclusions          DocumentRequirementExclusion[]
@@ -306,7 +351,7 @@ model Document {
   otherEntityId    String?
   otherEntity      OtherEntity?      @relation(fields: [otherEntityId], references: [id], onDelete: Restrict)
   issueDate        DateTime?
-  expiryDate       DateTime
+  expiryDate       DateTime?
   noticeDays       Int
   amountCents      Int?
   notes            String?
@@ -563,11 +608,13 @@ model TripProductLine {
   @@index([productId])
 }
 
-model ContainerCustomer {
+model Customer {
   id             String          @id @default(cuid())
   code           String?         @unique
   name           String
   vatNumber      String?
+  taxCode        String?
+  pecEmail       String?
   address        String?
   postalCode     String?
   city           String?
@@ -581,6 +628,7 @@ model ContainerCustomer {
 
   @@index([active, name])
   @@index([code])
+  @@map("ContainerCustomer")
 }
 
 model ContainerTrip {
@@ -592,7 +640,7 @@ model ContainerTrip {
   waybillNumber           String?
   waybillDate             DateTime?                @db.Date
   customerId              String?
-  customer                ContainerCustomer?       @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  customer                Customer?                @relation(fields: [customerId], references: [id], onDelete: SetNull)
   customerCode            String?
   customerName            String?
   customerReference       String?
@@ -889,6 +937,9 @@ model Supplier {
   name             String            @unique
   phone            String?
   email            String?
+  vatNumber        String?
+  taxCode          String?
+  pecEmail         String?
   address          String?
   postalCode       String?
   city             String?
@@ -948,6 +999,7 @@ model WarehouseItem {
   sourceExpenseLineId String?
   migratedToExpense   Boolean             @default(false)
   expenseLines        ExpenseLine[]
+  expenseLineAllocations ExpenseLineAllocation[]
   movements           WarehouseMovement[]
   createdAt           DateTime            @default(now())
   updatedAt           DateTime            @updatedAt
@@ -1268,6 +1320,7 @@ model ExpenseLine {
   warehouseItem   WarehouseItem?        @relation(fields: [warehouseItemId], references: [id], onDelete: SetNull)
   odometerKm      Int?
   notes           String?
+  allocations     ExpenseLineAllocation[]
   createdAt       DateTime              @default(now())
   updatedAt       DateTime              @updatedAt
 
@@ -1277,6 +1330,30 @@ model ExpenseLine {
   @@index([trailerId])
   @@index([warehouseItemId])
   @@index([categoryId])
+}
+
+model ExpenseLineAllocation {
+  id              String                @id @default(cuid())
+  expenseLineId   String
+  expenseLine     ExpenseLine           @relation(fields: [expenseLineId], references: [id], onDelete: Cascade)
+  position        Int                   @default(0)
+  allocationType  ExpenseAllocationType
+  quantityMilli   Int
+  tractorId       String?
+  tractor         Tractor?              @relation(fields: [tractorId], references: [id], onDelete: SetNull)
+  trailerId       String?
+  trailer         Trailer?              @relation(fields: [trailerId], references: [id], onDelete: SetNull)
+  warehouseItemId String?
+  warehouseItem   WarehouseItem?        @relation(fields: [warehouseItemId], references: [id], onDelete: SetNull)
+  odometerKm      Int?
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+
+  @@unique([expenseLineId, position])
+  @@index([allocationType])
+  @@index([tractorId])
+  @@index([trailerId])
+  @@index([warehouseItemId])
 }
 
 model LeaseContract {

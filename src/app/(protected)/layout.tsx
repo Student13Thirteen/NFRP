@@ -1,9 +1,11 @@
 import { requireUser } from '@/lib/auth';
+import { Suspense } from 'react';
 import { PoweredByNFRP } from '@/components/AppBrand';
 import { AppNavigation } from '@/components/AppNavigation';
 import { AssistantChatWidget } from '@/components/AssistantChatWidget';
 import { DashboardSectionMenu } from '@/components/DashboardSectionMenu';
 import { FlashMessage } from '@/components/FlashMessage';
+import { FormDraftCleanup } from '@/components/FormDraftCleanup';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { getAssistantEnabled } from '@/lib/env';
 import { getBranding } from '@/lib/branding';
@@ -39,6 +41,9 @@ export default async function ProtectedLayout({ children }: { children: React.Re
 
   return (
     <div className="app-shell">
+      <Suspense fallback={null}>
+        <FormDraftCleanup />
+      </Suspense>
       <AppNavigation branding={branding} queueCounts={queueCounts} userEmail={user.email} />
       <main className="main-content">
         <div className="top-utility-bar">

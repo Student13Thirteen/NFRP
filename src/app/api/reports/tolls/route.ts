@@ -9,6 +9,7 @@ import {
   formatTollDistance,
   formatTollMoney,
   getTollEntryStatusLabel,
+  isReportableTollEntryStatus,
   tollEntryInclude,
   tollEntryMatchesSearch
 } from '@/lib/tolls';
@@ -53,7 +54,7 @@ export async function GET(request: NextRequest) {
   const fromDate = parseFilterDateParts(params, 'from');
   const toDate = parseFilterDateParts(params, 'to');
   const filtered = entries.filter((entry) => {
-    if (entry.status === TollEntryStatus.PENDING) return false;
+    if (!isReportableTollEntryStatus(entry.status)) return false;
     if (tractorId && entry.tractorId !== tractorId) return false;
     if (cardId && entry.cardId !== cardId) return false;
     if (status === 'needs_review' && entry.status !== TollEntryStatus.NEEDS_REVIEW) return false;

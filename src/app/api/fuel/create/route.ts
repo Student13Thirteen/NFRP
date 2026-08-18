@@ -17,19 +17,20 @@ export async function POST(request: NextRequest) {
   const user = await getCurrentUser();
   if (!user) return redirectTo('/login');
 
+  let entry: Awaited<ReturnType<typeof createManualFuelEntryFromForm>>;
   try {
     const formData = await request.formData();
-    const entry = await createManualFuelEntryFromForm(formData);
-
-    revalidatePath('/fuel');
-    await setFlashMessage({
-      type: 'success',
-      title: 'Rifornimento salvato',
-      message: 'Il rifornimento manuale e stato inserito.'
-    });
-    return redirectTo(`/fuel/${entry.id}`);
+    entry = await createManualFuelEntryFromForm(formData);
   } catch (error) {
     console.error('Creazione rifornimento manuale fallita.', error);
     return redirectWithError('/fuel/new', getFuelActionErrorMessage(error));
   }
+
+  revalidatePath('/fuel');
+  await setFlashMessage({
+    type: 'success',
+    title: 'Rifornimento salvato',
+    message: 'Il rifornimento manuale e stato inserito.'
+  });
+  return redirectTo(`/fuel/${entry.id}`);
 }

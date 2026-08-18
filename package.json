@@ -24,10 +24,10 @@
     "bcryptjs": "^2.4.3",
     "cron-parser": "^4.9.0",
     "lucide-react": "^0.468.0",
-    "next": "16.2.11",
+    "next": "16.3.1",
     "pdf-parse": "^1.1.1",
     "pg": "^8.13.1",
-    "postcss": "8.5.22",
+    "postcss": "8.5.23",
     "prisma": "^5.22.0",
     "react": "^19.2.1",
     "react-dom": "^19.2.1",
@@ -43,16 +43,16 @@
     "@types/react": "^19.2.7",
     "@types/react-dom": "^19.2.3",
     "eslint": "^9.39.4",
-    "eslint-config-next": "16.2.11",
+    "eslint-config-next": "16.3.1",
     "typescript": "^5.7.2",
-    "vitest": "^2.1.8"
+    "vitest": "4.1.10"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
   },
   "overrides": {
     "next": {
-      "postcss": "8.5.22",
+      "postcss": "8.5.23",
       "sharp": "0.35.3"
     }
   }

@@ -57,6 +57,8 @@ export default async function TollsPage({ searchParams }: TollsPageProps) {
   const totalGrossCents = filteredBatches.reduce((sum, batch) => sum + batch.storedGrossCents, 0);
   const totalNetCents = filteredBatches.reduce((sum, batch) => sum + batch.storedNetCents, 0);
   const totalDistanceKm = filteredBatches.reduce((sum, batch) => sum + batch.distanceKm, 0);
+  const discardedEntries = filteredBatches.reduce((sum, batch) => sum + batch.discardedCount, 0);
+  const discardedGrossCents = filteredBatches.reduce((sum, batch) => sum + batch.discardedGrossCents, 0);
   const pendingBatches = allBatches.filter((batch) => batch.pendingCount > 0);
   const pendingRows = pendingBatches.reduce((sum, batch) => sum + batch.pendingCount, 0);
   const reviewBatches = allBatches.filter((batch) => getTollBatchState(batch) === 'needs_review').length;
@@ -126,6 +128,14 @@ export default async function TollsPage({ searchParams }: TollsPageProps) {
         </Link>
       </section>
 
+      {discardedEntries > 0 ? (
+        <p className="muted" role="note">
+          I totali “nei file” conservano gli importi originali per la riconciliazione con la fattura. Di questi,{' '}
+          <strong>{discardedEntries.toLocaleString('it-IT')} pedaggi ({formatTollMoney(discardedGrossCents)})</strong>{' '}
+          sono scartati e non entrano nel centro costi o nei report confermati.
+        </p>
+      ) : null}
+
       <form className="filter-bar toll-batch-filter" action="/tolls">
         <label>
           Cerca
@@ -186,7 +196,14 @@ export default async function TollsPage({ searchParams }: TollsPageProps) {
                     </td>
                     <td className="click-cell"><Link className="table-cell-link" href={href}>{formatDate(batch.invoiceDate)}</Link></td>
                     <td className="click-cell"><Link className="table-cell-link" href={href}>{formatPeriod(batch.firstTollDate, batch.lastTollDate)}</Link></td>
-                    <td className="click-cell"><Link className="table-cell-link" href={href}>{batch.entryCount.toLocaleString('it-IT')}</Link></td>
+                    <td className="click-cell">
+                      <Link className="table-cell-link" href={href}>
+                        {batch.entryCount.toLocaleString('it-IT')}
+                        {batch.discardedCount > 0 ? (
+                          <span className="muted">di cui {batch.discardedCount.toLocaleString('it-IT')} scartati</span>
+                        ) : null}
+                      </Link>
+                    </td>
                     <td className="click-cell"><Link className="table-cell-link" href={href}>{formatTollDistance(batch.distanceKm)}</Link></td>
                     <td className="click-cell"><Link className="table-cell-link" href={href}>{formatTollMoney(batch.storedNetCents)}</Link></td>
                     <td className="click-cell"><Link className="table-cell-link" href={href}>{formatTollMoney(batch.storedVatCents)}</Link></td>
@@ -195,6 +212,9 @@ export default async function TollsPage({ searchParams }: TollsPageProps) {
                       <Link className="table-cell-link" href={href}>
                         <span className={`badge ${statusClass(state)}`}>{getTollBatchStateLabel(state)}</span>
                         {batch.pendingCount > 0 ? <span className="muted">{batch.pendingCount.toLocaleString('it-IT')} righe</span> : null}
+                        {batch.discardedCount > 0 ? (
+                          <span className="muted">{formatTollMoney(batch.discardedGrossCents)} scartati</span>
+                        ) : null}
                       </Link>
                     </td>
                     <td>

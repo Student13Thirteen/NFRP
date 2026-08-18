@@ -2,11 +2,18 @@
 
 import { requireUser } from '@/lib/auth';
 
-import { DocumentStatus, VehicleLifecycleStatus } from '@prisma/client';
+import { DocumentStatus, Prisma, VehicleLifecycleStatus } from '@prisma/client';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { z } from 'zod';
 import { prisma } from '@/lib/db';
+import {
+  createDriverAssignment,
+  createDriverAssignmentInTransaction,
+  deleteDriverAssignment,
+  parseDriverAssignmentPeriod,
+  updateDriverAssignment
+} from '@/lib/driver-assignments';
 import { documentInclude } from '@/lib/documents';
 import { enqueueDocumentMirrorSyncs } from '@/lib/document-mirror-queue';
 import { setFlashMessage } from '@/lib/flash';
@@ -21,7 +28,6 @@ const tractorSchema = z.object({
   plate: z.string().min(1, 'Targa richiesta').max(20),
   brand: z.string().max(80).nullable(),
   model: z.string().max(80).nullable(),
-  assignedDriverId: z.string().min(1).nullable(),
   notes: z.string().max(2000).nullable()
 });
 
@@ -30,20 +36,60 @@ function parseTractor(formData: FormData) {
     plate: normalizePlate(formString(formData, 'plate')),
     brand: optionalFormString(formData, 'brand'),
     model: optionalFormString(formData, 'model'),
-    assignedDriverId: optionalFormString(formData, 'assignedDriverId'),
     notes: optionalFormString(formData, 'notes')
   });
 }
 
+function assignmentErrorRedirect(id: string, error: unknown): never {
+  const message = error instanceof Error && error.message ? error.message.slice(0, 260) : 'Operazione non riuscita.';
+  redirect(`/vehicles/tractors/${id}?assignmentError=${encodeURIComponent(message)}#driver-assignments`);
+}
+
+function assignmentInput(tractorId: string, formData: FormData) {
+  const driverId = formString(formData, 'driverId');
+  const period = parseDriverAssignmentPeriod({
+    validFrom: formString(formData, 'validFrom'),
+    validTo: formString(formData, 'validTo')
+  });
+  return {
+    tractorId,
+    driverId,
+    ...period,
+    notes: optionalFormString(formData, 'assignmentNotes')
+  };
+}
+
 export async function createTractorAction(formData: FormData) {
   await requireUser();
-  const tractor = await prisma.tractor.create({
-    data: {
-      ...parseTractor(formData),
-      active: true,
-      lifecycleStatus: VehicleLifecycleStatus.ACTIVE
-    }
-  });
+  const assignedDriverId = optionalFormString(formData, 'assignedDriverId');
+  const assignmentValidFrom = assignedDriverId
+    ? parseDriverAssignmentPeriod({ validFrom: formString(formData, 'assignmentValidFrom'), validTo: '' }).validFrom
+    : null;
+  let tractor: { id: string };
+  try {
+    tractor = await prisma.$transaction(async (tx) => {
+      const created = await tx.tractor.create({
+        data: {
+          ...parseTractor(formData),
+          active: true,
+          lifecycleStatus: VehicleLifecycleStatus.ACTIVE
+        }
+      });
+      if (assignedDriverId && assignmentValidFrom) {
+        await createDriverAssignmentInTransaction(tx, {
+          tractorId: created.id,
+          driverId: assignedDriverId,
+          validFrom: assignmentValidFrom,
+          validTo: null,
+          notes: 'Associazione indicata durante la creazione del trattore.'
+        });
+      }
+      return created;
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+  } catch (error) {
+    const message = error instanceof Error && error.message ? error.message.slice(0, 260) : 'Creazione trattore non riuscita.';
+    redirect(`/vehicles/tractors?error=${encodeURIComponent(message)}`);
+  }
   revalidatePath('/vehicles/tractors');
   await setFlashMessage({
     type: 'success',
@@ -51,6 +97,59 @@ export async function createTractorAction(formData: FormData) {
     message: 'La nuova targa e stata inserita correttamente.'
   });
   redirect(`/vehicles/tractors/${tractor.id}`);
+}
+
+export async function createTractorDriverAssignmentAction(tractorId: string, formData: FormData) {
+  await requireUser();
+  try {
+    await createDriverAssignment(assignmentInput(tractorId, formData), {
+      closeOpenAssignments: formData.get('closeOpenAssignments') === 'on'
+    });
+  } catch (error) {
+    assignmentErrorRedirect(tractorId, error);
+  }
+  revalidatePath('/vehicles/tractors');
+  revalidatePath(`/vehicles/tractors/${tractorId}`);
+  await setFlashMessage({
+    type: 'success',
+    title: 'Associazione salvata',
+    message: 'Il periodo trattore-autista e ora disponibile per manutenzioni e rifornimenti.'
+  });
+  redirect(`/vehicles/tractors/${tractorId}#driver-assignments`);
+}
+
+export async function updateTractorDriverAssignmentAction(tractorId: string, assignmentId: string, formData: FormData) {
+  await requireUser();
+  try {
+    await updateDriverAssignment(assignmentId, assignmentInput(tractorId, formData));
+  } catch (error) {
+    assignmentErrorRedirect(tractorId, error);
+  }
+  revalidatePath('/vehicles/tractors');
+  revalidatePath(`/vehicles/tractors/${tractorId}`);
+  await setFlashMessage({
+    type: 'success',
+    title: 'Periodo aggiornato',
+    message: 'Le nuove date saranno usate nelle associazioni automatiche.'
+  });
+  redirect(`/vehicles/tractors/${tractorId}#driver-assignments`);
+}
+
+export async function deleteTractorDriverAssignmentAction(tractorId: string, assignmentId: string) {
+  await requireUser();
+  try {
+    await deleteDriverAssignment(assignmentId, tractorId);
+  } catch (error) {
+    assignmentErrorRedirect(tractorId, error);
+  }
+  revalidatePath('/vehicles/tractors');
+  revalidatePath(`/vehicles/tractors/${tractorId}`);
+  await setFlashMessage({
+    type: 'success',
+    title: 'Associazione eliminata',
+    message: 'Il periodo e stato rimosso dallo storico.'
+  });
+  redirect(`/vehicles/tractors/${tractorId}#driver-assignments`);
 }
 
 export async function updateTractorAction(id: string, formData: FormData) {

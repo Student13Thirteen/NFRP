@@ -16,7 +16,7 @@ export default async function TripImportPage({ searchParams }: TripImportPagePro
     <>
       <PageHeader
         title="Import bolle container"
-        description="Carica uno o più PDF: il sistema legge LDV, targa, committente, terminal, container e tappe. L’eventuale nome autista nel PDF resta solo come promemoria e lo inserisci tu."
+        description="Carica uno o più PDF: il sistema legge LDV, targa, committente, terminal, container e tappe. Confronta nome e cognome dell’autista con l’anagrafica e propone la corrispondenza più probabile: prima di creare il viaggio la controlli o la correggi tu."
         action={
           <div className="actions-row">
             <Link className="secondary-button" href="/trips/import/review">

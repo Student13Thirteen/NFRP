@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { daysUntil, formatDate, toDateInputValue } from '@/lib/dates';
+import { daysUntil, formatDate, formatExpiryDate, toDateInputValue } from '@/lib/dates';
 
 describe('date helpers', () => {
   it('calculates remaining days by calendar date', () => {
@@ -21,5 +21,10 @@ describe('date helpers', () => {
 
   it('formats missing dates with placeholder', () => {
     expect(formatDate(null)).toBe('-');
+  });
+
+  it('keeps non-expiring documents outside deadline windows', () => {
+    expect(daysUntil(null)).toBe(Number.POSITIVE_INFINITY);
+    expect(formatExpiryDate(null)).toBe('Senza scadenza');
   });
 });

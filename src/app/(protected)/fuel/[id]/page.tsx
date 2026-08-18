@@ -2,7 +2,7 @@ import { requireUser } from '@/lib/auth';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { FuelEntryStatus } from '@prisma/client';
-import { AlertTriangle, Download, Trash2 } from 'lucide-react';
+import { AlertTriangle, Download, Plus, Trash2 } from 'lucide-react';
 import { ConfirmSubmitButton } from '@/components/ConfirmSubmitButton';
 import { FuelEntryForm } from '@/components/FuelEntryForm';
 import { PageHeader } from '@/components/PageHeader';
@@ -42,15 +42,19 @@ export default async function FuelDetailPage({ params, searchParams }: FuelDetai
   });
   if (!entry) notFound();
 
-  const [tractors, drivers, suppliers, cards, products] = await Promise.all([
-    prisma.tractor.findMany({ include: { assignedDriver: true }, orderBy: [{ active: 'desc' }, { plate: 'asc' }] }),
+  const [tractors, drivers, suppliers, cards, products, driverAssignments] = await Promise.all([
+    prisma.tractor.findMany({ orderBy: [{ active: 'desc' }, { plate: 'asc' }] }),
     prisma.driver.findMany({ orderBy: [{ active: 'desc' }, { lastName: 'asc' }, { firstName: 'asc' }] }),
     prisma.fuelSupplier.findMany({ orderBy: [{ active: 'desc' }, { name: 'asc' }] }),
     prisma.fuelCard.findMany({
       include: { fuelSupplier: true, assignedTractor: true },
       orderBy: [{ active: 'desc' }, { fuelSupplier: { name: 'asc' } }, { cardNumber: 'asc' }]
     }),
-    prisma.fuelProduct.findMany({ orderBy: [{ active: 'desc' }, { name: 'asc' }, { code: 'asc' }] })
+    prisma.fuelProduct.findMany({ orderBy: [{ active: 'desc' }, { name: 'asc' }, { code: 'asc' }] }),
+    prisma.tractorDriverAssignment.findMany({
+      include: { driver: { select: { firstName: true, lastName: true } } },
+      orderBy: { validFrom: 'desc' }
+    })
   ]);
 
   return (
@@ -69,6 +73,12 @@ export default async function FuelDetailPage({ params, searchParams }: FuelDetai
             <Link className="secondary-button" href="/fuel">
               Rifornimenti
             </Link>
+            {entry.manualEntry ? (
+              <Link className="primary-button" href="/fuel/new">
+                <Plus size={16} aria-hidden />
+                Nuovo rifornimento
+              </Link>
+            ) : null}
           </div>
         }
       />
@@ -171,11 +181,18 @@ export default async function FuelDetailPage({ params, searchParams }: FuelDetai
           <h2>Modifica rifornimento</h2>
           <FuelEntryForm
             action={`/api/fuel/${entry.id}/update`}
+            recoveryKey={`fuel:${entry.id}`}
+            recoverOnError={Boolean(resolvedSearchParams.error)}
             tractors={tractors}
             drivers={drivers}
             suppliers={suppliers}
             cards={cards}
             products={products}
+            driverAssignments={driverAssignments.map((assignment) => ({
+              ...assignment,
+              validFrom: toDateInputValue(assignment.validFrom),
+              validTo: assignment.validTo ? toDateInputValue(assignment.validTo) : null
+            }))}
             submitLabel="Salva modifiche"
             defaultValues={{
               fuelDate: toDateInputValue(entry.fuelDate),
