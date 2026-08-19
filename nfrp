@@ -357,10 +357,10 @@ demo() {
   fi
   printf '1. Open: %s/login\n' "$APP_PUBLIC_URL"
   printf '2. Login with: %s\n' "$ADMIN_EMAIL"
-  printf '3. Open Acquisisci → Autostrade.\n'
+  printf '3. Open Acquisisci → Pedaggi.\n'
   printf '4. Upload: examples/tolls/demo-tolls.csv\n'
   printf '5. Review PENDING rows, upload it again to show deduplication, then confirm.\n'
-  printf '6. Open Autostrade and Centro costi to verify the result.\n'
+  printf '6. Open Pedaggi and Centro costi to verify the result.\n'
   printf '7. Open Impostazioni → Identità aziendale to change name, logo and palette live.\n'
 }
 

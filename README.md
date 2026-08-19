@@ -85,7 +85,7 @@ bash nfrp logs app
 4. Follow the printed path and upload `examples/tolls/demo-tolls.csv`.
 5. Review the proposed rows before confirming them.
 6. Upload the same file again to see duplicate protection.
-7. Open **Autostrade** and **Centro costi** to verify the confirmed result.
+7. Open **Pedaggi** and **Centro costi** to verify the confirmed result.
 8. Open **Impostazioni → Identità aziendale** to change company name, logo and palette.
 
 All records installed by default are synthetic. Do not upload real company documents to a public or disposable demo.
@@ -100,6 +100,9 @@ All records installed by default are synthetic. Do not upload real company docum
 - trip-bill OCR with approximate driver-name suggestions and mandatory operator validation;
 - separate fuel-delivery and container-transport workflows;
 - fuel, toll, leasing, maintenance, warehouse and expense imports;
+- one maintenance module: a single manual entry that covers a one-line repair and a full invoice or delivery note, and a single register that also keeps the pre-unification maintenance cards;
+- thousandth precision on expense unit prices, with a dated and always editable driver on each allocation;
+- later completion of descriptions, notes and PDF on a posted document, without reopening amounts or allocations;
 - duplicate protection, coherence checks and explicit `PENDING` states;
 - recoverable form drafts and idempotent manual fuel/expense submissions;
 - reversible toll discard and restore, without discarded rows entering costs or reports;
@@ -112,7 +115,7 @@ All records installed by default are synthetic. Do not upload real company docum
 - runtime company branding without a code fork;
 - PostgreSQL migrations, synthetic seed data and clean-room CI.
 
-The public repository mirrors the application behavior as of 17 August 2026 while replacing company-specific data, parser fixtures and identifiers with synthetic equivalents. See the [release boundary](docs/RELEASE_2026-08-17.md) for the exact meaning of parity.
+The public repository mirrors the application behavior as of 19 August 2026 while replacing company-specific data, parser fixtures and identifiers with synthetic equivalents. See the [19 August 2026 release](docs/RELEASE_2026-08-19.md) and the [17 August 2026 release](docs/RELEASE_2026-08-17.md) for the exact meaning of parity.
 
 ## Everyday commands
 
@@ -195,6 +198,7 @@ Before using NFRP with real data, review [SECURITY.md](SECURITY.md). The project
 - [Five-minute demo](docs/DEMO.md)
 - [Optional integrations](docs/INTEGRATIONS.md)
 - [Company branding](docs/BRANDING.md)
+- [19 August 2026 release snapshot](docs/RELEASE_2026-08-19.md)
 - [17 August 2026 release snapshot](docs/RELEASE_2026-08-17.md)
 - [Security model and limits](SECURITY.md)
 - [Product origin](docs/PRODUCT_ORIGIN.md)
