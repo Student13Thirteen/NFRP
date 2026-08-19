@@ -13,12 +13,14 @@ import {
   allocationKeyFor,
   buildAllocationOptions,
   expenseDocumentInclude,
-  formatQuantityMilli,
+  formatQuantityInput,
+  formatUnitPriceInput,
   getExpenseLineAllocations,
   type ExpenseLineWithRelations
 } from '@/lib/expense';
 import { buildMaintenanceCategoryOptions } from '@/lib/maintenance';
 import { findDatedDriverAssignment } from '@/lib/driver-assignment-core';
+import { EXPENSE_DRIVER_AUTO } from '@/lib/expense-driver';
 import {
   confirmAllPendingExpensesAction,
   confirmExpenseWithEditsAction,
@@ -30,23 +32,20 @@ type ReviewPageProps = {
   searchParams: Promise<{ error?: string }>;
 };
 
-function amountInput(cents: number): string {
-  return new Intl.NumberFormat('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(cents / 100);
-}
-
 function lineToDefault(line: ExpenseLineWithRelations): ExpenseLineDefault {
   return {
     description: line.description,
     code: line.code || '',
-    quantity: formatQuantityMilli(line.quantityMilli),
+    quantity: formatQuantityInput(line.quantityMilli),
     unit: line.unit,
-    unitPrice: amountInput(line.unitPriceCents),
+    unitPrice: formatUnitPriceInput(line.unitPriceMilliEuro),
     vatRate: String(line.vatRatePercent),
     categoryId: line.categoryId || '',
     allocations: getExpenseLineAllocations(line).map((allocation) => ({
-      quantity: formatQuantityMilli(allocation.quantityMilli),
+      quantity: formatQuantityInput(allocation.quantityMilli),
       allocationKey: allocationKeyFor(allocation),
-      odometerKm: allocation.odometerKm === null ? '' : String(allocation.odometerKm)
+      odometerKm: allocation.odometerKm === null ? '' : String(allocation.odometerKm),
+      driverSelection: allocation.driverId || EXPENSE_DRIVER_AUTO
     }))
   };
 }
@@ -54,7 +53,7 @@ function lineToDefault(line: ExpenseLineWithRelations): ExpenseLineDefault {
 export default async function ExpensesReviewPage({ searchParams }: ReviewPageProps) {
   await requireUser();
   const resolvedSearchParams = await searchParams;
-  const [documents, categories, tractors, trailers, driverAssignments] = await Promise.all([
+  const [documents, categories, tractors, trailers, drivers, driverAssignments] = await Promise.all([
     prisma.expenseDocument.findMany({
       where: { status: 'PENDING' },
       include: expenseDocumentInclude,
@@ -63,6 +62,7 @@ export default async function ExpensesReviewPage({ searchParams }: ReviewPagePro
     prisma.category.findMany({ where: { active: true }, orderBy: { name: 'asc' } }),
     prisma.tractor.findMany({ where: { active: true }, orderBy: { plate: 'asc' } }),
     prisma.trailer.findMany({ where: { active: true }, orderBy: { plate: 'asc' } }),
+    prisma.driver.findMany({ orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }] }),
     prisma.tractorDriverAssignment.findMany({
       include: { driver: { select: { firstName: true, lastName: true } } },
       orderBy: { validFrom: 'desc' }
@@ -79,12 +79,12 @@ export default async function ExpensesReviewPage({ searchParams }: ReviewPagePro
   return (
     <>
       <PageHeader
-        title="Fatture e DDT da validare"
-        description="Controlla i dati letti dal PDF e assegna ogni riga al Magazzino oppure alla targa corretta."
+        title="Da controllare"
+        description="Manutenzioni importate e, quando presenti, fatture leasing: controlla i dati letti dal PDF e assegna ogni riga al Magazzino oppure alla targa corretta. Niente entra nei costi finche non confermi."
         action={
-          <Link className="secondary-button" href="/maintenances/expenses">
+          <Link className="secondary-button" href="/maintenances">
             <ArrowLeft size={16} aria-hidden />
-            Torna a fatture e DDT
+            Torna alle manutenzioni
           </Link>
         }
       />
@@ -95,7 +95,7 @@ export default async function ExpensesReviewPage({ searchParams }: ReviewPagePro
         <section className="panel">
           <p>Nessun documento in attesa di validazione.</p>
           <Link className="primary-button" href="/maintenances/expenses/import">
-            Importa PDF
+            Importa manutenzioni da PDF
           </Link>
         </section>
       ) : (
@@ -205,6 +205,23 @@ export default async function ExpensesReviewPage({ searchParams }: ReviewPagePro
                   allocations={allocations}
                   categories={categoryChoices}
                   defaultRows={doc.lines.map(lineToDefault)}
+                  allocationDate={toDateInputValue(allocationDate)}
+                  drivers={drivers.map((driver) => ({
+                    id: driver.id,
+                    label: `${driver.lastName} ${driver.firstName}`.trim(),
+                    active: driver.active
+                  }))}
+                  driverAssignments={driverAssignments.map((assignment) => ({
+                    tractorId: assignment.tractorId,
+                    driverId: assignment.driverId,
+                    validFrom: toDateInputValue(assignment.validFrom),
+                    validTo: assignment.validTo ? toDateInputValue(assignment.validTo) : null,
+                    driver: assignment.driver
+                  }))}
+                  trailerTractorLinks={trailers.map((trailer) => ({
+                    trailerId: trailer.id,
+                    tractorId: trailer.assignedTractorId
+                  }))}
                   warehouseOrVehicleRequired={doc.source === 'MAINTENANCE_IMPORT'}
                   vehicleAllocationRequired={doc.source === 'LEASE_INVOICE_IMPORT'}
                 />

@@ -60,6 +60,18 @@ export function getMaintenanceStatusLabel(status: MaintenanceStatus): string {
   }
 }
 
+/**
+ * Filtro combinato usato dal quadro operativo: gli interventi ancora da chiudere sono
+ * quelli da fare piu quelli in lavorazione, quindi il conteggio e la pagina filtrata
+ * devono mostrare lo stesso insieme.
+ */
+export const maintenanceToCloseFilterValue = 'OPEN_IN_PROGRESS';
+
+export const maintenanceToCloseStatuses: MaintenanceStatus[] = [
+  MaintenanceStatus.OPEN,
+  MaintenanceStatus.IN_PROGRESS
+];
+
 export function getMaintenanceVehicleLabel(
   maintenance: Pick<MaintenanceWithRelations, 'tractor' | 'trailer'>
 ): string {

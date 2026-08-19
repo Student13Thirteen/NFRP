@@ -1,4 +1,4 @@
-import { DocumentStatus, EntityType, FuelEntryStatus, MaintenanceStatus, Prisma, TollEntryStatus, TripStatus, VehicleLifecycleStatus, WarehouseStatus } from '@prisma/client';
+import { DocumentStatus, EntityType, FuelEntryStatus, Prisma, TollEntryStatus, TripStatus, VehicleLifecycleStatus, WarehouseStatus } from '@prisma/client';
 import { buildDocumentChecklist } from '@/lib/document-checklist';
 import { daysUntil, formatDate, formatExpiryDate, startOfDay } from '@/lib/dates';
 import { prisma } from '@/lib/db';
@@ -20,13 +20,16 @@ import {
   tripMatchesSearch,
   type TripWithRelations
 } from '@/lib/trips';
+import { maintenanceInclude, maintenanceToCloseFilterValue } from '@/lib/maintenance';
 import {
-  getMaintenanceStatusLabel,
-  getMaintenanceVehicleLabel,
-  maintenanceInclude,
-  maintenanceMatchesSearch,
-  type MaintenanceWithRelations
-} from '@/lib/maintenance';
+  buildMaintenanceRegisterRows,
+  filterAndSortMaintenanceRegisterRows,
+  maintenanceRegisterRowMatchesText,
+  normalizeMaintenanceRegisterFilters,
+  summarizeMaintenanceRegister,
+  type MaintenanceRegisterRow
+} from '@/lib/maintenance-register';
+import { expenseDocumentInclude } from '@/lib/expense';
 import {
   formatWarehouseQuantity,
   getWarehouseStatusLabel,
@@ -920,24 +923,46 @@ export async function getCostSummary(args: AssistantToolArguments = {}): Promise
   };
 }
 
-function createAssistantMaintenanceRow(maintenance: MaintenanceWithRelations): AssistantResultRow {
-  const supplierLabel = maintenance.supplier?.name ? ` - ${maintenance.supplier.name}` : '';
+function createAssistantMaintenanceRow(row: MaintenanceRegisterRow): AssistantResultRow {
+  const supplierLabel = row.supplierLabel === '-' ? '' : ` - ${row.supplierLabel}`;
   return {
-    id: maintenance.id,
-    title: maintenance.title,
-    entityLabel: `${getMaintenanceVehicleLabel(maintenance)}${supplierLabel}`,
-    entityTypeLabel: 'Manutenzione',
-    documentTypeName: maintenance.category.name,
-    expiryDate: formatDate(maintenance.maintenanceDate),
+    id: row.id,
+    title: row.title,
+    entityLabel: `${row.allocationLabel}${supplierLabel}`,
+    entityTypeLabel: row.kind === 'CARD' ? 'Manutenzione (scheda storica)' : 'Manutenzione',
+    documentTypeName: row.categoryLabel,
+    expiryDate: formatDate(row.date),
     daysUntil: null,
-    statusLabel: getMaintenanceStatusLabel(maintenance.status),
-    pdfLabel: maintenance.filePath ? 'PDF presente' : 'PDF mancante',
-    href: `/maintenances/${maintenance.id}`,
+    statusLabel: row.statusLabel,
+    pdfLabel: row.filePath ? 'PDF presente' : 'PDF mancante',
+    href: row.href,
     resultType: 'maintenance',
     typeLabel: 'Categoria',
-    dateLabel: 'Data intervento',
-    dateValue: formatDate(maintenance.maintenanceDate)
+    dateLabel: 'Data manutenzione',
+    dateValue: formatDate(row.date)
   };
+}
+
+/**
+ * Manutenzioni viste dall'assistente: lo stesso insieme del registro unico
+ * (documenti con righe + schede storiche), senza le fatture leasing.
+ */
+async function loadMaintenanceRegisterRows(): Promise<MaintenanceRegisterRow[]> {
+  const [documents, cards] = await Promise.all([
+    prisma.expenseDocument.findMany({
+      where: { source: { not: 'LEASE_INVOICE_IMPORT' } },
+      include: expenseDocumentInclude,
+      orderBy: [{ updatedAt: 'desc' }, { createdAt: 'desc' }],
+      take: MAX_ASSISTANT_SCAN
+    }),
+    prisma.maintenance.findMany({
+      include: maintenanceInclude,
+      orderBy: [{ maintenanceDate: 'desc' }, { createdAt: 'desc' }],
+      take: MAX_ASSISTANT_SCAN
+    })
+  ]);
+
+  return buildMaintenanceRegisterRows({ documents, cards });
 }
 
 async function buildMaintenanceFilterHref(args: AssistantToolArguments): Promise<string> {
@@ -974,79 +999,75 @@ async function buildMaintenanceFilterHref(args: AssistantToolArguments): Promise
   return query ? `/maintenances?${query}` : '/maintenances';
 }
 
-function maintenanceMatchesAssistantFilters(
-  maintenance: MaintenanceWithRelations,
+function maintenanceRowMatchesAssistantFilters(
+  row: MaintenanceRegisterRow,
   args: AssistantToolArguments,
   now = new Date()
 ): boolean {
   const plate = normalizeAssistantPlate(args.plate);
-  if (args.maintenanceStatus && maintenance.status !== args.maintenanceStatus) return false;
-  if (plate && maintenance.tractor?.plate.toUpperCase() !== plate && maintenance.trailer?.plate.toUpperCase() !== plate) return false;
-  if (args.missingPdf === true && maintenance.filePath) return false;
-  if (args.missingPdf === false && !maintenance.filePath) return false;
+  if (plate && !row.searchText.includes(plate.toLocaleLowerCase('it'))) return false;
+  if (args.missingPdf === true && row.filePath) return false;
+  if (args.missingPdf === false && !row.filePath) return false;
   if (
     args.maintenanceCategoryName &&
-    !maintenance.category.name.toLocaleLowerCase('it-IT').includes(args.maintenanceCategoryName.toLocaleLowerCase('it-IT'))
+    !row.categoryLabel.toLocaleLowerCase('it-IT').includes(args.maintenanceCategoryName.toLocaleLowerCase('it-IT'))
   ) {
     return false;
   }
   if (
     args.supplierName &&
-    !maintenance.supplier?.name.toLocaleLowerCase('it-IT').includes(args.supplierName.toLocaleLowerCase('it-IT'))
+    !row.supplierLabel.toLocaleLowerCase('it-IT').includes(args.supplierName.toLocaleLowerCase('it-IT'))
   ) {
     return false;
   }
   if (args.withinDays) {
-    const remainingDays = daysUntil(maintenance.maintenanceDate, now);
+    const remainingDays = daysUntil(row.date, now);
     if (remainingDays < 0 || remainingDays > normalizeWithinDays(args.withinDays)) return false;
   }
-  const query = normalizeQuery(args.query);
-  if (query && !maintenanceMatchesSearch(maintenance, query)) return false;
-  return true;
+  return maintenanceRegisterRowMatchesText(row, args.query);
 }
 
 export async function searchMaintenances(args: AssistantToolArguments): Promise<AssistantToolResult> {
   const now = new Date();
-  const maintenances = await prisma.maintenance.findMany({
-    include: maintenanceInclude,
-    orderBy: [{ maintenanceDate: 'desc' }, { createdAt: 'desc' }],
-    take: MAX_ASSISTANT_SCAN
-  });
-  const filteredMaintenances = maintenances.filter((maintenance) => maintenanceMatchesAssistantFilters(maintenance, args, now));
-  const rows = filteredMaintenances.slice(0, MAX_ASSISTANT_ROWS).map(createAssistantMaintenanceRow);
+  const registerRows = await loadMaintenanceRegisterRows();
+  // Lo stato richiesto usa lo stesso vocabolario del registro: stati storici,
+  // `PENDING` (da controllare) e `CONFIRMED` (registrata).
+  const statusFiltered = filterAndSortMaintenanceRegisterRows(
+    registerRows,
+    normalizeMaintenanceRegisterFilters({ status: args.maintenanceStatus })
+  );
+  const filteredRows = statusFiltered.filter((row) => maintenanceRowMatchesAssistantFilters(row, args, now));
+  const rows = filteredRows.slice(0, MAX_ASSISTANT_ROWS).map(createAssistantMaintenanceRow);
   const title = args.maintenanceCategoryName || args.supplierName || 'Manutenzioni';
 
   return {
     title,
-    message: buildResultMessage(title, filteredMaintenances.length, rows.length),
-    total: filteredMaintenances.length,
+    message: buildResultMessage(title, filteredRows.length, rows.length),
+    total: filteredRows.length,
     rows,
     link: { href: await buildMaintenanceFilterHref(args), label: 'Apri manutenzioni' },
-    tooMany: filteredMaintenances.length > rows.length
+    tooMany: filteredRows.length > rows.length
   };
 }
 
 export async function getMaintenanceSummary(): Promise<AssistantToolResult> {
-  const [open, inProgress, completed, invoiced, archived, missingPdf, maintenances] = await Promise.all([
-    prisma.maintenance.count({ where: { status: MaintenanceStatus.OPEN } }),
-    prisma.maintenance.count({ where: { status: MaintenanceStatus.IN_PROGRESS } }),
-    prisma.maintenance.count({ where: { status: MaintenanceStatus.COMPLETED } }),
-    prisma.maintenance.count({ where: { status: MaintenanceStatus.INVOICED } }),
-    prisma.maintenance.count({ where: { status: MaintenanceStatus.ARCHIVED } }),
-    prisma.maintenance.count({ where: { filePath: null } }),
-    prisma.maintenance.findMany({
-      include: maintenanceInclude,
-      orderBy: [{ maintenanceDate: 'desc' }, { createdAt: 'desc' }],
-      take: 15
-    })
-  ]);
+  const registerRows = await loadMaintenanceRegisterRows();
+  const summary = summarizeMaintenanceRegister(registerRows);
+  const toClose = filterAndSortMaintenanceRegisterRows(
+    registerRows,
+    normalizeMaintenanceRegisterFilters({ status: maintenanceToCloseFilterValue })
+  ).length;
+  const missingPdf = registerRows.filter((row) => !row.filePath).length;
+  const recent = filterAndSortMaintenanceRegisterRows(registerRows, normalizeMaintenanceRegisterFilters({}));
+  const rows = recent.slice(0, MAX_ASSISTANT_ROWS).map(createAssistantMaintenanceRow);
   const title = 'Riepilogo manutenzioni';
-  const rows = maintenances.slice(0, MAX_ASSISTANT_ROWS).map(createAssistantMaintenanceRow);
 
   return {
     title,
-    message: `${title}: ${open} da fare, ${inProgress} in lavorazione, ${completed} completate, ${invoiced} fatturate, ${archived} archiviate, ${missingPdf} senza PDF.`,
-    total: open + inProgress + completed + invoiced + archived,
+    message: `${title}: ${summary.total} in totale, ${summary.pending} da controllare, `
+      + `${summary.total - summary.pending - summary.cards} registrate, ${summary.cards} schede storiche `
+      + `(${toClose} ancora da chiudere), ${missingPdf} senza PDF.`,
+    total: summary.total,
     rows,
     link: { href: '/maintenances', label: 'Apri manutenzioni' },
     tooMany: false

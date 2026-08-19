@@ -8,6 +8,7 @@ import { setFlashMessage } from '@/lib/flash';
 import {
   createExpenseDocumentFromForm,
   getExpenseActionErrorMessage,
+  updateConfirmedExpenseDocumentDetails,
   updateExpenseDocumentLines
 } from '@/lib/expense-form';
 import {
@@ -17,13 +18,16 @@ import {
   deleteExpenseDocument
 } from '@/lib/expense-confirm';
 
-const LIST_PATH = '/maintenances/expenses';
+// Il registro unico delle manutenzioni e `/maintenances`; le rotte `expenses` restano
+// per i dettagli documento, l'import e il controllo.
+const LIST_PATH = '/maintenances';
+const DOCUMENT_PATH = '/maintenances/expenses';
 const REVIEW_PATH = '/maintenances/expenses/review';
 
 function revalidateExpenseViews() {
   revalidatePath(LIST_PATH);
+  revalidatePath(DOCUMENT_PATH);
   revalidatePath(REVIEW_PATH);
-  revalidatePath('/maintenances');
   revalidatePath('/warehouse');
   revalidatePath('/leases');
   revalidatePath('/costs');
@@ -50,18 +54,38 @@ export async function createExpenseDocumentAction(formData: FormData) {
     await createExpenseDocumentFromForm(formData);
   } catch (error) {
     logExpenseError('Creazione documento di spesa fallita.', error);
-    redirectWithError(`${LIST_PATH}/new`, getExpenseActionErrorMessage(error));
+    redirectWithError('/maintenances/new', getExpenseActionErrorMessage(error));
   }
 
   revalidateExpenseViews();
   await setFlashMessage({
     type: 'success',
-    title: pending ? 'Documento salvato da validare' : 'Documento di spesa salvato',
+    title: pending ? 'Manutenzione da controllare' : 'Manutenzione registrata',
     message: pending
-      ? 'Lo trovi tra i documenti in attesa di validazione.'
+      ? 'La trovi tra le manutenzioni in attesa di controllo.'
       : 'Le righe sono state registrate e il magazzino aggiornato dove previsto.'
   });
   redirect(pending ? REVIEW_PATH : LIST_PATH);
+}
+
+export async function updateConfirmedExpenseDetailsAction(documentId: string, formData: FormData) {
+  await requireUser();
+  try {
+    await updateConfirmedExpenseDocumentDetails(documentId, formData);
+  } catch (error) {
+    logExpenseError('Aggiornamento dettagli documento di spesa fallito.', error);
+    redirectWithError(`${DOCUMENT_PATH}/${documentId}/edit`, getExpenseActionErrorMessage(error));
+  }
+
+  revalidateExpenseViews();
+  revalidatePath(`${DOCUMENT_PATH}/${documentId}`);
+  revalidatePath(`${DOCUMENT_PATH}/${documentId}/edit`);
+  await setFlashMessage({
+    type: 'success',
+    title: 'Manutenzione aggiornata',
+    message: 'Descrizioni, note e PDF sono stati salvati. I dati contabili sono rimasti invariati.'
+  });
+  redirect(`${DOCUMENT_PATH}/${documentId}`);
 }
 
 export async function confirmExpenseWithEditsAction(documentId: string, formData: FormData) {
@@ -88,7 +112,7 @@ export async function confirmExpenseWithEditsAction(documentId: string, formData
       title: 'Documento già confermato',
       message: 'Un altro invio aveva già confermato il documento: le modifiche di questa scheda non sono state applicate.'
     });
-    redirect(`${LIST_PATH}/${documentId}`);
+    redirect(`${DOCUMENT_PATH}/${documentId}`);
   }
   await setFlashMessage({
     type: 'success',
@@ -104,13 +128,13 @@ export async function deleteExpenseFromDetailAction(documentId: string) {
     await deleteExpenseDocument(documentId);
   } catch (error) {
     logExpenseError('Eliminazione documento di spesa fallita.', error);
-    redirectWithError(`${LIST_PATH}/${documentId}`, getExpenseActionErrorMessage(error));
+    redirectWithError(`${DOCUMENT_PATH}/${documentId}`, getExpenseActionErrorMessage(error));
   }
   revalidateExpenseViews();
   await setFlashMessage({
     type: 'info',
     title: 'Documento eliminato',
-    message: 'Il documento di spesa è stato eliminato.'
+    message: 'Il documento è stato eliminato.'
   });
   redirect(LIST_PATH);
 }

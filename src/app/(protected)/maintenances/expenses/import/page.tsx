@@ -16,12 +16,12 @@ export default async function ExpenseImportPage({ searchParams }: ExpenseImportP
   return (
     <>
       <PageHeader
-        title="Importa fatture e DDT"
-        description="Carica fatture, DDT o una scansione continua: ogni pagina diventa un documento autonomo, pronto da verificare."
+        title="Importa manutenzioni da PDF"
+        description="Carica fatture, DDT o una scansione continua: ogni pagina diventa una manutenzione autonoma, pronta da controllare."
         action={
-          <Link className="secondary-button" href="/maintenances/expenses">
+          <Link className="secondary-button" href="/maintenances">
             <ArrowLeft size={16} aria-hidden />
-            Torna a fatture e DDT
+            Torna alle manutenzioni
           </Link>
         }
       />
@@ -37,7 +37,7 @@ export default async function ExpenseImportPage({ searchParams }: ExpenseImportP
         </p>
         <ManagedImportForm
           action="/api/maintenances/expenses/import"
-          buttonLabel="Separa e analizza manutenzioni"
+          buttonLabel="Analizza le manutenzioni"
           recoveryHref="/maintenances/expenses/review"
           streamProgress
         >

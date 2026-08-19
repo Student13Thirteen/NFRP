@@ -24,6 +24,20 @@ const PROTECTED_PAGE_PREFIXES = [
   '/warehouse'
 ] as const;
 
+/**
+ * Rotte del vecchio modulo "fatture e DDT" confluite nel registro unico delle
+ * manutenzioni. Il redirect vive qui perche `redirect()` dentro una pagina in
+ * streaming non produce piu una risposta 3xx, ma una pagina vuota con salto lato client.
+ */
+const UNIFIED_MAINTENANCE_ROUTES = new Map<string, string>([
+  ['/maintenances/expenses', '/maintenances'],
+  ['/maintenances/expenses/new', '/maintenances/new']
+]);
+
+export function getUnifiedMaintenanceTarget(pathname: string): string | null {
+  return UNIFIED_MAINTENANCE_ROUTES.get(pathname.replace(/\/+$/, '') || '/') ?? null;
+}
+
 export function isProtectedPagePath(pathname: string): boolean {
   return PROTECTED_PAGE_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`));
 }
@@ -47,6 +61,13 @@ export async function proxy(request: NextRequest) {
     if (!sessionValid) {
       return NextResponse.redirect(new URL('/login', request.url));
     }
+  }
+
+  const unifiedTarget = getUnifiedMaintenanceTarget(request.nextUrl.pathname);
+  if (unifiedTarget) {
+    const target = new URL(unifiedTarget, request.url);
+    target.search = request.nextUrl.search;
+    return NextResponse.redirect(target, 307);
   }
 
   if (
