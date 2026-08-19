@@ -178,6 +178,7 @@ export async function importParsedExpenseDraft(
             quantityMilli: line.quantityMilli,
             unit: 'pz',
             unitPriceCents: line.unitPriceCents,
+            unitPriceMilliEuro: line.unitPriceCents * 10,
             imponibileCents: line.imponibileCents,
             vatRatePercent: line.vatRatePercent,
             vatCents: line.vatCents,

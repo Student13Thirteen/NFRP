@@ -98,8 +98,10 @@ function parseOptionalInt(formData: FormData, key: string, label: string): numbe
 function parseAmountCents(formData: FormData): number | null {
   const value = optionalFormString(formData, 'amount');
   if (value === null) return null;
-  const normalized = value.replace(/\./g, '').replace(',', '.').trim();
-  if (!/^\d+(\.\d{1,2})?$/.test(normalized)) throw new Error('Importo non valido.');
+  const normalized = value.replace(',', '.').trim();
+  if (!/^\d+(\.\d{1,2})?$/.test(normalized)) {
+    throw new Error('Importo non valido. Usa il punto e fino a due decimali (es. 1720.20).');
+  }
   return Math.round(Number(normalized) * 100);
 }
 
@@ -133,17 +135,22 @@ export function getMaintenanceActionErrorMessage(error: unknown): string {
 
 async function buildVehicleRelation(vehicleKeyValue: string | null) {
   const vehicleKey = parseMaintenanceVehicleKey(vehicleKeyValue);
-  if (!vehicleKey) return { tractorId: null, trailerId: null, vehicleLabel: null };
+  if (!vehicleKey) return { tractorId: null, trailerId: null, driverTractorId: null, vehicleLabel: null };
 
   if (vehicleKey.type === 'TRACTOR') {
     const tractor = await prisma.tractor.findUnique({ where: { id: vehicleKey.id } });
     if (!tractor) throw new Error('Targa trattore non valida.');
-    return { tractorId: tractor.id, trailerId: null, vehicleLabel: `Trattore ${tractor.plate}` };
+    return { tractorId: tractor.id, trailerId: null, driverTractorId: tractor.id, vehicleLabel: `Trattore ${tractor.plate}` };
   }
 
   const trailer = await prisma.trailer.findUnique({ where: { id: vehicleKey.id } });
   if (!trailer) throw new Error('Targa semirimorchio non valida.');
-  return { tractorId: null, trailerId: trailer.id, vehicleLabel: `Semirimorchio ${trailer.plate}` };
+  return {
+    tractorId: null,
+    trailerId: trailer.id,
+    driverTractorId: trailer.assignedTractorId,
+    vehicleLabel: `Semirimorchio ${trailer.plate}`
+  };
 }
 
 async function assertMaintenanceReferences(input: {
@@ -202,8 +209,8 @@ export async function parseMaintenanceForm(formData: FormData) {
   const description = formString(formData, 'description');
   const vehicleRelation = await buildVehicleRelation(optionalFormString(formData, 'vehicleKey'));
   const driverId = selectedDriverId || (
-    vehicleRelation.tractorId
-      ? await getDriverIdForTractorAtDate(prisma, vehicleRelation.tractorId, maintenanceDate)
+    vehicleRelation.driverTractorId
+      ? await getDriverIdForTractorAtDate(prisma, vehicleRelation.driverTractorId, maintenanceDate)
       : null
   );
   await assertMaintenanceReferences({ categoryId, supplierId, driverId });

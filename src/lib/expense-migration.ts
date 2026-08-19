@@ -17,6 +17,7 @@ export type MigrationLineInput = {
   quantityMilli: number;
   unit: string;
   unitPriceCents: number;
+  unitPriceMilliEuro: number;
   imponibileCents: number;
   vatRatePercent: number;
   vatCents: number;
@@ -111,6 +112,7 @@ function buildLineFromTotal(params: {
     quantityMilli: params.quantityMilli,
     unit: params.unit,
     unitPriceCents,
+    unitPriceMilliEuro: unitPriceCents * 10,
     imponibileCents,
     vatRatePercent: MIGRATION_DEFAULT_VAT,
     vatCents,

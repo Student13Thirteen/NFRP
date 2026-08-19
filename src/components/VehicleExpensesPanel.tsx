@@ -59,7 +59,7 @@ export async function VehicleExpensesPanel(props: VehicleExpensesPanelProps) {
         return matches ? [{
           key: `line-${line.id}-${allocation.id}`,
           date: line.document.registeredAt,
-          source: line.document.supplier?.name || line.document.supplierName || 'Documento di spesa',
+          source: line.document.supplier?.name || line.document.supplierName || 'Manutenzione',
           description: line.description,
           odometerKm: allocation.odometerKm,
           nettoCents: amounts[index].imponibileCents,
@@ -114,8 +114,8 @@ export async function VehicleExpensesPanel(props: VehicleExpensesPanelProps) {
             {rows.length === 0 ? (
               <tr>
                 <td colSpan={6} className="empty-state">
-                  Nessuna spesa registrata su questo mezzo. Aggiungile dai{' '}
-                  <Link href="/maintenances/expenses">documenti di spesa</Link>.
+                  Nessuna spesa registrata su questo mezzo. Aggiungila dalle{' '}
+                  <Link href="/maintenances">manutenzioni</Link>.
                 </td>
               </tr>
             ) : (

@@ -43,6 +43,11 @@ export function imponibileCentsFromUnit(quantityMilli: number, unitPriceCents: n
   return Math.round((Math.max(0, quantityMilli) * Math.max(0, unitPriceCents)) / 1000);
 }
 
+/** Imponibile in centesimi da quantità (×1000) e prezzo unitario in millesimi di euro. */
+export function imponibileCentsFromUnitMilliEuro(quantityMilli: number, unitPriceMilliEuro: number): number {
+  return Math.round((Math.max(0, quantityMilli) * Math.max(0, unitPriceMilliEuro)) / 10_000);
+}
+
 function distributeCents(totalCents: number, quantities: number[]): number[] {
   const safeTotal = Math.max(0, Math.round(totalCents));
   const totalQuantity = quantities.reduce((sum, value) => sum + Math.max(0, value), 0);
@@ -86,6 +91,24 @@ export function formatEuroCents(value: number | null | undefined): string {
 
 export function formatQuantityMilli(quantityMilli: number): string {
   return (quantityMilli / 1000).toLocaleString('it-IT', { maximumFractionDigits: 3 });
+}
+
+export function formatQuantityInput(quantityMilli: number): string {
+  return (quantityMilli / 1000).toFixed(3).replace(/0+$/, '').replace(/\.$/, '');
+}
+
+/** Valore per i campi prezzo manuali: punto decimale, tre cifre, nessun separatore migliaia. */
+export function formatUnitPriceInput(unitPriceMilliEuro: number | null | undefined): string {
+  if (unitPriceMilliEuro === null || unitPriceMilliEuro === undefined) return '';
+  return (unitPriceMilliEuro / 1000).toFixed(3);
+}
+
+export function formatUnitPrice(unitPriceMilliEuro: number | null | undefined): string {
+  if (unitPriceMilliEuro === null || unitPriceMilliEuro === undefined) return '-';
+  return `${new Intl.NumberFormat('it-IT', {
+    minimumFractionDigits: 3,
+    maximumFractionDigits: 3
+  }).format(unitPriceMilliEuro / 1000)} €`;
 }
 
 // Codifica dell'allocazione per le <select>: TRACTOR:<id> | TRAILER:<id> | WAREHOUSE | GENERIC

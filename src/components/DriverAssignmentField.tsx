@@ -47,7 +47,9 @@ export function DriverAssignmentField({
           onChange={(event) => setSelectedDriverId(event.target.value)}
           disabled={disabled}
         >
-          <option value="">Automatico dall&apos;associazione alla data</option>
+          <option value="">
+            Automatico: {resolved ? driverLabel(resolved) : 'nessun autista associato alla data'}
+          </option>
           {drivers.map((driver) => (
             <option key={driver.id} value={driver.id}>
               {driver.label}{driver.active === false ? ' (non attivo)' : ''}
@@ -60,7 +62,7 @@ export function DriverAssignmentField({
           Scelta manuale: <strong>{selectedDriver.label}</strong>. Prevale sull&apos;associazione automatica.
         </p>
       ) : !tractorId ? (
-        <p className="field-context neutral">Scegli un trattore per usare l&apos;associazione automatica.</p>
+        <p className="field-context neutral">Scegli un mezzo associato a un trattore per usare l&apos;autista automatico.</p>
       ) : !date ? (
         <p className="field-context neutral">Completa la data per individuare l&apos;autista corretto.</p>
       ) : resolved ? (
