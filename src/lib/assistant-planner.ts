@@ -27,7 +27,9 @@ export const assistantToolNames = [
 export const assistantEntityTypes = ['DRIVER', 'TRACTOR', 'TRAILER', 'OTHER'] as const;
 export const assistantSearchStatuses = ['expired', 'expiring', 'valid', 'inactive', 'all'] as const;
 export const assistantTripStatuses = ['PLANNED', 'SENT', 'COMPLETED', 'CANCELLED'] as const;
-export const assistantMaintenanceStatuses = ['OPEN', 'IN_PROGRESS', 'COMPLETED', 'INVOICED', 'ARCHIVED'] as const;
+// `PENDING` e `CONFIRMED` sono gli stati delle manutenzioni registrate oggi (da controllare /
+// registrata); gli altri restano validi sulle schede storiche pre-unificazione.
+export const assistantMaintenanceStatuses = ['PENDING', 'CONFIRMED', 'OPEN', 'IN_PROGRESS', 'COMPLETED', 'INVOICED', 'ARCHIVED'] as const;
 export const assistantWarehouseStatuses = ['IN_STOCK', 'LOW_STOCK', 'OUT_OF_STOCK', 'ARCHIVED'] as const;
 export const assistantCostSources = ['TRIPS', 'CONTAINER_TRIPS', 'FUEL', 'TOLLS', 'EXPENSE', 'MAINTENANCE', 'DOCUMENT', 'WAREHOUSE', 'WAREHOUSE_MOUNT'] as const;
 export const assistantRankMetrics = ['spend', 'count', 'consumption', 'costPerKm'] as const;
@@ -534,6 +536,8 @@ function detectTripStatus(message: string): AssistantTripStatus | undefined {
 }
 
 function detectMaintenanceStatus(message: string): AssistantMaintenanceStatus | undefined {
+  if (/da\s+controllare|da\s+validare|in\s+attesa\s+di\s+controllo|bozz/i.test(message)) return 'PENDING';
+  if (/registrat|confermat/i.test(message)) return 'CONFIRMED';
   if (/archiviat/i.test(message)) return 'ARCHIVED';
   if (/fatturat/i.test(message)) return 'INVOICED';
   if (/completat|chius/i.test(message)) return 'COMPLETED';

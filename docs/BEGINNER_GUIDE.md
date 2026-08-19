@@ -95,7 +95,7 @@ The real application menus are currently in Italian. The most useful labels are:
 |---|---|
 | `Panoramica` | Dashboard / overview |
 | `Acquisisci` | Import or upload |
-| `Autostrade` | Tolls |
+| `Pedaggi` | Tolls |
 | `Centro costi` | Cost center |
 | `Impostazioni` | Settings |
 | `Identità aziendale` | Company identity |

@@ -1,75 +1,61 @@
 import { requireUser } from '@/lib/auth';
+import { randomUUID } from 'node:crypto';
 import Link from 'next/link';
-import { ArrowLeft, Receipt, Settings2 } from 'lucide-react';
-import { MaintenanceForm } from '@/components/MaintenanceForm';
+import { ArrowLeft, FileUp, Save, Settings2 } from 'lucide-react';
+import { DatePartsInput } from '@/components/DatePartsInput';
+import { ExpenseLinesEditor } from '@/components/ExpenseLinesEditor';
+import { FileUpload } from '@/components/FileUpload';
 import { PageHeader } from '@/components/PageHeader';
+import { QuickSupplierField } from '@/components/QuickSupplierField';
+import { RecoverableForm } from '@/components/RecoverableForm';
 import { toDateInputValue } from '@/lib/dates';
 import { prisma } from '@/lib/db';
-import {
-  buildMaintenanceCategoryOptions,
-  buildMaintenanceDriverOptions,
-  buildMaintenanceSupplierOptions,
-  buildMaintenanceVehicleOptions
-} from '@/lib/maintenance';
-import { MaintenanceStatus } from '@prisma/client';
+import { buildAllocationOptions } from '@/lib/expense';
+import { buildMaintenanceCategoryOptions } from '@/lib/maintenance';
+import { createExpenseDocumentAction } from '../expenses/actions';
 
 type NewMaintenancePageProps = {
-  searchParams: Promise<{
-    error?: string;
-    categoryId?: string;
-    supplierId?: string;
-    driverId?: string;
-    vehicleKey?: string;
-  }>;
+  searchParams: Promise<{ error?: string }>;
 };
 
 export default async function NewMaintenancePage({ searchParams }: NewMaintenancePageProps) {
   await requireUser();
   const resolvedSearchParams = await searchParams;
-  const [categories, suppliers, drivers, tractors, trailers, driverAssignments] = await Promise.all([
+  const today = toDateInputValue(new Date());
+  const [categories, suppliers, tractors, trailers, drivers, driverAssignments] = await Promise.all([
     prisma.category.findMany({ where: { active: true }, orderBy: { name: 'asc' } }),
     prisma.supplier.findMany({ where: { active: true }, orderBy: { name: 'asc' } }),
-    prisma.driver.findMany({ where: { active: true }, orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }] }),
     prisma.tractor.findMany({ where: { active: true }, orderBy: { plate: 'asc' } }),
     prisma.trailer.findMany({ where: { active: true }, orderBy: { plate: 'asc' } }),
+    prisma.driver.findMany({ orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }] }),
     prisma.tractorDriverAssignment.findMany({
       include: { driver: { select: { firstName: true, lastName: true } } },
       orderBy: { validFrom: 'desc' }
     })
   ]);
+
+  const allocations = buildAllocationOptions(tractors, trailers);
+  const categoryChoices = buildMaintenanceCategoryOptions(categories);
   const missingRegistry = categories.length === 0;
-  const vehicleOptions = buildMaintenanceVehicleOptions(tractors, trailers);
-  const defaultCategoryId = categories.some((category) => category.id === resolvedSearchParams.categoryId)
-    ? resolvedSearchParams.categoryId
-    : categories[0]?.id;
-  const defaultSupplierId = suppliers.some((supplier) => supplier.id === resolvedSearchParams.supplierId)
-    ? resolvedSearchParams.supplierId
-    : undefined;
-  const defaultDriverId = drivers.some((driver) => driver.id === resolvedSearchParams.driverId)
-    ? resolvedSearchParams.driverId
-    : undefined;
-  const defaultVehicleKey = vehicleOptions.some((vehicle) => vehicle.value === resolvedSearchParams.vehicleKey)
-    ? resolvedSearchParams.vehicleKey
-    : undefined;
 
   return (
     <>
       <PageHeader
-        title="Nuova scheda intervento"
-        description="Inserimento rapido per una manutenzione senza righe contabili."
+        title="Inserisci nuova manutenzione"
+        description="Una riga per un intervento semplice, una riga per ogni voce se hai una fattura o un DDT. Prezzi con il punto, IVA e destinazione per riga."
         action={
           <div className="actions-row">
             <Link className="secondary-button" href="/maintenances">
               <ArrowLeft size={16} aria-hidden />
-              Torna alla lista
+              Torna alle manutenzioni
             </Link>
-            <Link className="primary-button" href="/maintenances/expenses/new">
-              <Receipt size={16} aria-hidden />
-              Fattura/DDT multi-riga
+            <Link className="secondary-button" href="/maintenances/expenses/import">
+              <FileUp size={16} aria-hidden />
+              Importa manutenzioni da PDF
             </Link>
             <Link className="secondary-button" href="/maintenances/settings">
               <Settings2 size={16} aria-hidden />
-              Anagrafiche manutenzioni
+              Categorie e fornitori
             </Link>
           </div>
         }
@@ -78,42 +64,73 @@ export default async function NewMaintenancePage({ searchParams }: NewMaintenanc
       <section className="panel">
         {resolvedSearchParams.error ? <p className="form-error">{resolvedSearchParams.error}</p> : null}
         {missingRegistry ? (
-          <p className="form-error">Inserisci almeno una categoria manutenzione prima di creare una scheda.</p>
+          <p className="form-error">Inserisci almeno una categoria manutenzione prima di registrare un intervento.</p>
         ) : null}
-        <div className="mode-banner">
-          <Receipt size={18} aria-hidden />
-          <div>
-            <strong>Per fatture, DDT o ricambi con più righe usa il documento di spesa.</strong>
-            <span>Qui salvi solo una scheda semplice con un importo unico.</span>
-          </div>
-          <Link className="secondary-button compact-button" href="/maintenances/expenses/new">
-            Apri multi-riga
-          </Link>
-        </div>
-        <MaintenanceForm
-          action="/api/maintenances/create"
+
+        <RecoverableForm
+          action={createExpenseDocumentAction}
+          className="form-stack"
           recoveryKey="maintenance:new"
           recoverOnError={Boolean(resolvedSearchParams.error)}
-          categories={buildMaintenanceCategoryOptions(categories)}
-          suppliers={buildMaintenanceSupplierOptions(suppliers)}
-          drivers={buildMaintenanceDriverOptions(drivers)}
-          vehicles={vehicleOptions}
-          driverAssignments={driverAssignments.map((assignment) => ({
-            ...assignment,
-            validFrom: toDateInputValue(assignment.validFrom),
-            validTo: assignment.validTo ? toDateInputValue(assignment.validTo) : null
-          }))}
-          defaultValues={{
-            maintenanceDate: toDateInputValue(new Date()),
-            status: MaintenanceStatus.COMPLETED,
-            categoryId: defaultCategoryId,
-            supplierId: defaultSupplierId,
-            driverId: defaultDriverId,
-            vehicleKey: defaultVehicleKey
-          }}
-          submitLabel="Salva manutenzione"
-          disabled={missingRegistry}
-        />
+        >
+          <input name="submissionKey" type="hidden" defaultValue={randomUUID()} />
+          <div className="form-section-title">Manutenzione</div>
+          <div className="form-grid">
+            <DatePartsInput label="Data registrazione" name="registeredAt" defaultValue={today} required />
+            <DatePartsInput label="Data documento" name="documentDate" />
+            <QuickSupplierField
+              options={suppliers.map((supplier) => ({ id: supplier.id, label: supplier.name, active: supplier.active }))}
+            />
+            <label>
+              Numero documento
+              <input name="documentNumber" placeholder="Fattura, DDT o riferimento interno" />
+            </label>
+          </div>
+
+          <div className="form-section-title">Lavori e ricambi</div>
+          <p className="muted" style={{ margin: '0 0 10px' }}>
+            Per una manutenzione semplice compila la sola prima riga. Aggiungi altre righe se la fattura o il DDT ne contiene più di una.
+          </p>
+          <ExpenseLinesEditor
+            allocations={allocations}
+            categories={categoryChoices}
+            allocationDate={today}
+            drivers={drivers.map((driver) => ({
+              id: driver.id,
+              label: `${driver.lastName} ${driver.firstName}`.trim(),
+              active: driver.active
+            }))}
+            driverAssignments={driverAssignments.map((assignment) => ({
+              tractorId: assignment.tractorId,
+              driverId: assignment.driverId,
+              validFrom: toDateInputValue(assignment.validFrom),
+              validTo: assignment.validTo ? toDateInputValue(assignment.validTo) : null,
+              driver: assignment.driver
+            }))}
+            trailerTractorLinks={trailers.map((trailer) => ({
+              trailerId: trailer.id,
+              tractorId: trailer.assignedTractorId
+            }))}
+          />
+
+          <label>
+            Note interne
+            <textarea name="notes" rows={2} />
+          </label>
+
+          <div className="form-grid">
+            <FileUpload label="PDF della manutenzione (opzionale)" name="file" />
+            <label className="checkbox-row" style={{ alignSelf: 'end' }}>
+              <input name="saveAsPending" type="checkbox" />
+              Lascia da controllare prima di registrarla nei costi
+            </label>
+          </div>
+
+          <button className="primary-button" type="submit" disabled={missingRegistry}>
+            <Save size={16} aria-hidden />
+            Salva manutenzione
+          </button>
+        </RecoverableForm>
       </section>
     </>
   );

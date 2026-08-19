@@ -238,6 +238,7 @@ async function importInvoice(
             quantityMilli: 1000,
             unit: 'canone',
             unitPriceCents: parsed.netAmountCents,
+            unitPriceMilliEuro: parsed.netAmountCents * 10,
             imponibileCents: parsed.netAmountCents,
             vatRatePercent: parsed.vatRatePercent,
             vatCents: parsed.vatCents,

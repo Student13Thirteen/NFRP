@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { DATE_PARTS_VALUE_EVENT, type DatePartsValueEventDetail } from '@/lib/date-parts-events';
 import { FORM_DRAFT_RESTORE_EVENT, formDraftFromEvent } from '@/lib/form-draft';
 
 type DatePartsInputProps = {
@@ -76,7 +77,11 @@ export function DatePartsInput({ label, name, defaultValue, required = false, on
 
   useEffect(() => {
     onValueChange?.(isoValue);
-  }, [isoValue, onValueChange]);
+    const form = fieldRef.current?.closest('form');
+    form?.dispatchEvent(new CustomEvent<DatePartsValueEventDetail>(DATE_PARTS_VALUE_EVENT, {
+      detail: { name, value: isoValue }
+    }));
+  }, [isoValue, name, onValueChange]);
 
   useEffect(() => {
     const form = fieldRef.current?.closest('form');

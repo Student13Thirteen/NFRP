@@ -6,8 +6,19 @@ import {
   VAT_RATES,
   computeLineVat,
   formatEuroCents,
-  imponibileCentsFromUnit
+  formatUnitPrice,
+  imponibileCentsFromUnitMilliEuro
 } from '@/lib/expense-shared';
+import { DATE_PARTS_VALUE_EVENT, type DatePartsValueEventDetail } from '@/lib/date-parts-events';
+import type { DatedDriverAssignment } from '@/lib/driver-assignment-core';
+import {
+  EXPENSE_DRIVER_AUTO,
+  EXPENSE_DRIVER_NONE,
+  expenseDriverName,
+  findAutomaticExpenseDriver,
+  type ExpenseDriverOption,
+  type TrailerTractorLink
+} from '@/lib/expense-driver';
 import { FORM_DRAFT_RESTORE_EVENT, formDraftFromEvent, recoveredFormRowKey } from '@/lib/form-draft';
 
 export type AllocationChoice = { value: string; label: string; active?: boolean };
@@ -17,6 +28,7 @@ export type ExpenseAllocationDefault = {
   quantity?: string;
   allocationKey?: string;
   odometerKm?: string;
+  driverSelection?: string;
 };
 
 export type ExpenseLineDefault = {
@@ -37,6 +49,10 @@ type ExpenseLinesEditorProps = {
   categories: CategoryChoice[];
   defaultRows?: ExpenseLineDefault[];
   disabled?: boolean;
+  drivers?: ExpenseDriverOption[];
+  driverAssignments?: DatedDriverAssignment[];
+  trailerTractorLinks?: TrailerTractorLink[];
+  allocationDate?: string;
   vehicleAllocationRequired?: boolean;
   warehouseOrVehicleRequired?: boolean;
 };
@@ -46,6 +62,7 @@ type EditableAllocation = {
   quantity: string;
   allocationKey: string;
   odometerKm: string;
+  driverSelection: string;
 };
 
 type EditableLine = {
@@ -62,8 +79,14 @@ type EditableLine = {
 
 type EditableLineField = Exclude<keyof EditableLine, 'key' | 'allocations'>;
 
-function defaultAllocation(lineKey: string, quantity: string, allocationKey: string, odometerKm = ''): EditableAllocation {
-  return { key: `${lineKey}-allocation-0`, quantity, allocationKey, odometerKm };
+function defaultAllocation(
+  lineKey: string,
+  quantity: string,
+  allocationKey: string,
+  odometerKm = '',
+  driverSelection = EXPENSE_DRIVER_AUTO
+): EditableAllocation {
+  return { key: `${lineKey}-allocation-0`, quantity, allocationKey, odometerKm, driverSelection };
 }
 
 function emptyLine(key: string): EditableLine {
@@ -94,22 +117,23 @@ function buildInitialLines(defaultRows: ExpenseLineDefault[] | undefined): Edita
       code: row.code ?? '',
       quantity,
       unit: row.unit ?? 'pz',
-      unitPrice: row.unitPrice ?? '',
+      unitPrice: (row.unitPrice ?? '').replace(/,/g, '.'),
       vatRate: row.vatRate ?? '22',
       categoryId: row.categoryId ?? '',
       allocations: allocationRows.map((allocation, allocationIndex) => ({
         key: `${key}-allocation-${allocationIndex}`,
         quantity: allocation.quantity ?? quantity,
         allocationKey: allocation.allocationKey ?? 'GENERIC',
-        odometerKm: allocation.odometerKm ?? ''
+        odometerKm: allocation.odometerKm ?? '',
+        driverSelection: allocation.driverSelection ?? EXPENSE_DRIVER_AUTO
       }))
     };
   });
 }
 
-/** Parsing italiano per la sola anteprima live (la verità la fissa il server). */
+/** Convenzione manuale condivisa con Rifornimenti: punto decimale, niente separatore migliaia. */
 function toNumber(value: string): number {
-  const normalized = value.replace(/\./g, '').replace(',', '.').trim();
+  const normalized = value.replace(',', '.').trim();
   const parsed = Number(normalized);
   return Number.isFinite(parsed) ? parsed : 0;
 }
@@ -119,15 +143,15 @@ function toQuantityMilli(value: string): number {
 }
 
 function fromQuantityMilli(value: number): string {
-  return (Math.max(0, value) / 1000).toLocaleString('it-IT', { maximumFractionDigits: 3 });
+  return (Math.max(0, value) / 1000).toFixed(3).replace(/0+$/, '').replace(/\.$/, '');
 }
 
-function lineUnitPriceCents(line: EditableLine): number {
-  return Math.round(toNumber(line.unitPrice || '0') * 100);
+function lineUnitPriceMilliEuro(line: EditableLine): number {
+  return Math.round(toNumber(line.unitPrice || '0') * 1000);
 }
 
 function lineImponibileCents(line: EditableLine): number {
-  return imponibileCentsFromUnit(toQuantityMilli(line.quantity), lineUnitPriceCents(line));
+  return imponibileCentsFromUnitMilliEuro(toQuantityMilli(line.quantity), lineUnitPriceMilliEuro(line));
 }
 
 function allocationTotalMilli(line: EditableLine): number {
@@ -139,6 +163,10 @@ export function ExpenseLinesEditor({
   categories,
   defaultRows,
   disabled = false,
+  drivers = [],
+  driverAssignments = [],
+  trailerTractorLinks = [],
+  allocationDate = '',
   vehicleAllocationRequired = false,
   warehouseOrVehicleRequired = false
 }: ExpenseLinesEditorProps) {
@@ -161,6 +189,7 @@ export function ExpenseLinesEditor({
     }))
   );
   const [bulkAllocation, setBulkAllocation] = useState('');
+  const [effectiveAllocationDate, setEffectiveAllocationDate] = useState(allocationDate);
   const nextLineKey = useRef(initialLines.length);
   const nextAllocationKey = useRef(initialLines.reduce((sum, line) => sum + line.allocations.length, 0));
   const vehicleAllocations = useMemo(
@@ -179,10 +208,11 @@ export function ExpenseLinesEditor({
   function updateLine(key: string, field: EditableLineField, value: string) {
     setLines((current) => current.map((line) => {
       if (line.key !== key) return line;
+      const normalizedValue = field === 'unitPrice' ? value.replace(/,/g, '.') : value;
       if (field === 'quantity' && line.allocations.length === 1) {
-        return { ...line, quantity: value, allocations: [{ ...line.allocations[0], quantity: value }] };
+        return { ...line, quantity: normalizedValue, allocations: [{ ...line.allocations[0], quantity: normalizedValue }] };
       }
-      return { ...line, [field]: value };
+      return { ...line, [field]: normalizedValue };
     }));
   }
 
@@ -192,7 +222,12 @@ export function ExpenseLinesEditor({
       allocations: line.allocations.map((allocation) => allocation.key !== allocationKey ? allocation : {
         ...allocation,
         [field]: value,
-        ...(field === 'allocationKey' && value === 'WAREHOUSE' ? { odometerKm: '' } : {})
+        ...(field === 'allocationKey'
+          ? {
+              driverSelection: EXPENSE_DRIVER_AUTO,
+              ...(value === 'WAREHOUSE' || value === 'GENERIC' ? { odometerKm: '' } : {})
+            }
+          : {})
       })
     }));
   }
@@ -225,7 +260,8 @@ export function ExpenseLinesEditor({
         key: `${line.key}-allocation-${nextAllocationKey.current}`,
         quantity: fromQuantityMilli(newQuantityMilli),
         allocationKey: allocationRequired ? '' : sourceAllocation.allocationKey,
-        odometerKm: ''
+        odometerKm: '',
+        driverSelection: EXPENSE_DRIVER_AUTO
       };
       nextAllocationKey.current += 1;
 
@@ -264,7 +300,8 @@ export function ExpenseLinesEditor({
       allocations: line.allocations.map((allocation) => ({
         ...allocation,
         allocationKey: value,
-        ...(value === 'WAREHOUSE' ? { odometerKm: '' } : {})
+        driverSelection: EXPENSE_DRIVER_AUTO,
+        ...(value === 'WAREHOUSE' || value === 'GENERIC' ? { odometerKm: '' } : {})
       }))
     })));
   }
@@ -284,6 +321,31 @@ export function ExpenseLinesEditor({
       toQuantityMilli(allocation.quantity) > 0 && (!allocationRequired || allocationIsAllowed(allocation.allocationKey))
     );
   const assignedLines = lines.filter(lineIsComplete).length;
+
+  useEffect(() => {
+    const form = editorRef.current?.closest('form');
+    if (!form) return;
+
+    const dateValue = (name: string, override?: DatePartsValueEventDetail) => {
+      if (override?.name === name) return override.value;
+      return (form.querySelector(`input[name="${name}"]`) as HTMLInputElement | null)?.value || '';
+    };
+    const refreshDate = (detail?: DatePartsValueEventDetail) => {
+      setEffectiveAllocationDate(
+        dateValue('reviewDocumentDate', detail) ||
+        dateValue('documentDate', detail) ||
+        dateValue('registeredAt', detail) ||
+        allocationDate
+      );
+    };
+    const handleDateChange = (event: Event) => {
+      refreshDate((event as CustomEvent<DatePartsValueEventDetail>).detail);
+    };
+
+    refreshDate();
+    form.addEventListener(DATE_PARTS_VALUE_EVENT, handleDateChange);
+    return () => form.removeEventListener(DATE_PARTS_VALUE_EVENT, handleDateChange);
+  }, [allocationDate]);
 
   useEffect(() => {
     const form = editorRef.current?.closest('form');
@@ -312,7 +374,8 @@ export function ExpenseLinesEditor({
                 key: `${recoveredLineKey}-recovered-allocation-${index}`,
                 quantity: values.lineAllocationQuantity?.[allocationIndex] || quantity,
                 allocationKey: allocationRequired && !recoveredAllocationIsAllowed ? '' : recoveredAllocationKey,
-                odometerKm: values.lineAllocationOdometerKm?.[allocationIndex] || ''
+                odometerKm: values.lineAllocationOdometerKm?.[allocationIndex] || '',
+                driverSelection: values.lineAllocationDriverSelection?.[allocationIndex] || EXPENSE_DRIVER_AUTO
               };
             })
           : [defaultAllocation(recoveredLineKey, quantity, allocationRequired ? '' : 'GENERIC')];
@@ -323,7 +386,7 @@ export function ExpenseLinesEditor({
           code: values.lineCode?.[lineIndex] || '',
           quantity,
           unit: values.lineUnit?.[lineIndex] || 'pz',
-          unitPrice: values.lineUnitPrice?.[lineIndex] || '',
+          unitPrice: (values.lineUnitPrice?.[lineIndex] || '').replace(/,/g, '.'),
           vatRate: values.lineVatRate?.[lineIndex] || '22',
           categoryId: values.lineCategoryId?.[lineIndex] || '',
           allocations: recoveredAllocations
@@ -367,11 +430,16 @@ export function ExpenseLinesEditor({
         </section>
       ) : null}
 
+      <p className="muted expense-decimal-hint">
+        Per quantità e prezzi usa il <strong>punto</strong> come separatore decimale, senza separatore delle migliaia
+        (es. prezzo <strong>3.312</strong>).
+      </p>
+
       <div className="expense-editor-list">
         {lines.map((line, index) => {
           const imponibile = lineImponibileCents(line);
           const vatRate = Number(line.vatRate) || 0;
-          const unitIvato = computeLineVat(lineUnitPriceCents(line), vatRate).totalCents;
+          const unitIvatoMilliEuro = Math.round(lineUnitPriceMilliEuro(line) * (100 + vatRate) / 100);
           const { totalCents } = computeLineVat(imponibile, vatRate);
           const assignedMilli = allocationTotalMilli(line);
           const lineQuantityMilli = toQuantityMilli(line.quantity);
@@ -416,7 +484,7 @@ export function ExpenseLinesEditor({
                 <label>
                   Prezzo unitario netto
                   <input name="lineUnitPrice" inputMode="decimal" value={line.unitPrice}
-                    onChange={(event) => updateLine(line.key, 'unitPrice', event.target.value)} placeholder="0,00" disabled={disabled} />
+                    onChange={(event) => updateLine(line.key, 'unitPrice', event.target.value)} placeholder="0.000" disabled={disabled} />
                 </label>
                 <label>
                   IVA
@@ -460,9 +528,26 @@ export function ExpenseLinesEditor({
                 </div>
 
                 <div className="expense-allocation-list">
-                  {line.allocations.map((allocation, allocationIndex) => (
+                  {line.allocations.map((allocation, allocationIndex) => {
+                    const isVehicleAllocation = allocation.allocationKey.startsWith('TRACTOR:') || allocation.allocationKey.startsWith('TRAILER:');
+                    const automaticAssignment = findAutomaticExpenseDriver(
+                      driverAssignments,
+                      trailerTractorLinks,
+                      allocation.allocationKey,
+                      effectiveAllocationDate
+                    );
+                    const automaticDriverLabel = automaticAssignment?.driver
+                      ? expenseDriverName(automaticAssignment.driver)
+                      : 'nessun autista associato alla data';
+
+                    return (
                     <div className="expense-allocation-row" key={allocation.key}>
                       <input type="hidden" name="lineAllocationLineKey" value={line.key} />
+                      <input
+                        type="hidden"
+                        name="lineAllocationDriverSelection"
+                        value={isVehicleAllocation ? allocation.driverSelection : EXPENSE_DRIVER_NONE}
+                      />
                       <label>
                         Quantità assegnata
                         <input name="lineAllocationQuantity" inputMode="decimal" min="0.001" step="0.001" required
@@ -494,6 +579,29 @@ export function ExpenseLinesEditor({
                           onChange={(event) => updateAllocation(line.key, allocation.key, 'odometerKm', event.target.value)}
                           placeholder="Es. 260778" disabled={disabled || allocation.allocationKey === 'WAREHOUSE'} />
                       </label>
+                      {isVehicleAllocation ? (
+                        <label className="expense-field-driver">
+                          Autista
+                          <select
+                            value={allocation.driverSelection}
+                            onChange={(event) => updateAllocation(
+                              line.key,
+                              allocation.key,
+                              'driverSelection',
+                              event.target.value
+                            )}
+                            disabled={disabled}
+                          >
+                            <option value={EXPENSE_DRIVER_AUTO}>Automatico: {automaticDriverLabel}</option>
+                            <option value={EXPENSE_DRIVER_NONE}>Nessun autista</option>
+                            {drivers.map((driver) => (
+                              <option key={driver.id} value={driver.id}>
+                                {driver.label}{driver.active === false ? ' (non attivo)' : ''}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                      ) : null}
                       {line.allocations.length > 1 ? (
                         <button type="button" className="icon-button expense-allocation-remove"
                           onClick={() => removeAllocation(line.key, allocation.key)} disabled={disabled}
@@ -502,7 +610,8 @@ export function ExpenseLinesEditor({
                         </button>
                       ) : null}
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
 
                 {!allocationMatches ? (
@@ -512,7 +621,7 @@ export function ExpenseLinesEditor({
                 ) : null}
 
                 <div className="expense-editor-calculations" aria-label={`Totali operazione ${index + 1}`}>
-                  <span>Unitario ivato<strong>{formatEuroCents(unitIvato)}</strong></span>
+                  <span>Unitario ivato<strong>{formatUnitPrice(unitIvatoMilliEuro)}</strong></span>
                   <span>Imponibile<strong>{formatEuroCents(imponibile)}</strong></span>
                   <span>Totale ivato<strong>{formatEuroCents(totalCents)}</strong></span>
                 </div>

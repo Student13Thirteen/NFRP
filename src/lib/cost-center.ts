@@ -60,7 +60,7 @@ export function getCostSourceLabel(source: CostSource): string {
     case 'FUEL':
       return 'Rifornimenti';
     case 'TOLLS':
-      return 'Autostrade';
+      return 'Pedaggi';
     case 'LEASE':
       return 'Leasing previsto';
     case 'EXPENSE':

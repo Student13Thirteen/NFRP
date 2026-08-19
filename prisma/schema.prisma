@@ -211,6 +211,7 @@ model Driver {
   maintenances                  Maintenance[]
   fuelEntries                   FuelEntry[]
   employmentPeriods             DriverEmploymentPeriod[]
+  expenseLineAllocations        ExpenseLineAllocation[]
   createdAt                     DateTime                       @default(now())
   updatedAt                     DateTime                       @updatedAt
 
@@ -1305,6 +1306,7 @@ model ExpenseLine {
   quantityMilli   Int                   @default(1000)
   unit            String                @default("pz")
   unitPriceCents  Int                   @default(0)
+  unitPriceMilliEuro Int                @default(0)
   imponibileCents Int                   @default(0)
   vatRatePercent  Int                   @default(22)
   vatCents        Int                   @default(0)
@@ -1345,6 +1347,8 @@ model ExpenseLineAllocation {
   trailer         Trailer?              @relation(fields: [trailerId], references: [id], onDelete: SetNull)
   warehouseItemId String?
   warehouseItem   WarehouseItem?        @relation(fields: [warehouseItemId], references: [id], onDelete: SetNull)
+  driverId        String?
+  driver          Driver?               @relation(fields: [driverId], references: [id], onDelete: Restrict)
   odometerKm      Int?
   createdAt       DateTime              @default(now())
   updatedAt       DateTime              @updatedAt
@@ -1354,6 +1358,7 @@ model ExpenseLineAllocation {
   @@index([tractorId])
   @@index([trailerId])
   @@index([warehouseItemId])
+  @@index([driverId])
 }
 
 model LeaseContract {

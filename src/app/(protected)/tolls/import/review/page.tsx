@@ -37,7 +37,7 @@ export default async function TollImportReviewPage() {
           <div className="actions-row">
             <Link className="secondary-button" href="/tolls">
               <ArrowLeft size={16} aria-hidden />
-              Fatture autostrade
+              Pedaggi
             </Link>
             <Link className="secondary-button" href="/tolls/import">Import CSV</Link>
           </div>
@@ -84,7 +84,7 @@ export default async function TollImportReviewPage() {
           <div className="priority-clear">
             <Check size={20} aria-hidden />
             <span><strong>Nessun file da controllare</strong><small>Tutti i pedaggi importati sono stati gestiti.</small></span>
-            <Link className="secondary-button" href="/tolls">Apri fatture autostrade <ArrowRight size={14} aria-hidden /></Link>
+            <Link className="secondary-button" href="/tolls">Apri Pedaggi <ArrowRight size={14} aria-hidden /></Link>
           </div>
         </section>
       ) : (

@@ -66,18 +66,18 @@ export default async function TollsPage({ searchParams }: TollsPageProps) {
   return (
     <>
       <PageHeader
-        title="Fatture autostrade"
-        description="Registro mensile dei file pedaggi importati."
+        title="Pedaggi"
+        description="Registro mensile dei file e delle fatture autostrade importate, con i pedaggi di ogni periodo."
         action={
           <div className="actions-row">
             <FilteredReportButton baseHref="/api/reports/tolls" label="Report confermati" />
             <Link className="secondary-button" href="/tolls/cards">
               <CreditCard size={16} aria-hidden />
-              Tessere
+              Tessere autostrade
             </Link>
             <Link className="primary-button" href="/tolls/import">
               <UploadCloud size={16} aria-hidden />
-              Import CSV
+              Import autostrade CSV
             </Link>
           </div>
         }
@@ -91,7 +91,7 @@ export default async function TollsPage({ searchParams }: TollsPageProps) {
             <small>{pendingRows.toLocaleString('it-IT')} pedaggi in attesa</small>
           </span>
           <span className="metric-action">
-            Apri controllo
+            Controllo file autostrade
             <ArrowRight size={15} aria-hidden />
           </span>
         </Link>
@@ -118,11 +118,11 @@ export default async function TollsPage({ searchParams }: TollsPageProps) {
           <span>Distanza</span>
           <strong>{formatTollDistance(totalDistanceKm)}</strong>
         </div>
-        <Link className="metric metric-link" href="/tolls?status=needs_review" aria-label="Vedi fatture autostrade con avvisi">
+        <Link className="metric metric-link" href="/tolls?status=needs_review" aria-label="Filtra i file autostrade con avvisi">
           <span>File con avvisi</span>
           <strong>{reviewBatches}</strong>
           <span className="metric-action">
-            Vedi file
+            Filtra i file con avvisi
             <ArrowRight size={15} aria-hidden />
           </span>
         </Link>

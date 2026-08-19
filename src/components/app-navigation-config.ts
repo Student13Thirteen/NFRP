@@ -67,10 +67,10 @@ export const navigationGroups: NavigationGroup[] = [
     icon: CircleDollarSign,
     items: [
       { href: '/fuel', label: 'Rifornimenti', icon: Fuel, badge: 'fuel' },
-      { href: '/tolls', label: 'Autostrade', icon: Route, badge: 'tolls' },
+      { href: '/tolls', label: 'Pedaggi', icon: Route, badge: 'tolls' },
       { href: '/leases', label: 'Leasing', icon: Landmark, badge: 'leases' },
       { href: '/costs', label: 'Centro costi', icon: CircleDollarSign },
-      { href: '/maintenances/expenses', label: 'Manutenzioni e fatture', icon: Wrench, badge: 'expenses' },
+      { href: '/maintenances', label: 'Manutenzioni', icon: Wrench, badge: 'expenses' },
       { href: '/warehouse', label: 'Magazzino', icon: Boxes }
     ]
   },
@@ -102,15 +102,40 @@ export const navigationGroups: NavigationGroup[] = [
 
 export function isActivePath(pathname: string, href: string): boolean {
   if (href === '/dashboard') return pathname === '/dashboard';
-  if (href === '/acquisitions') return pathname === '/acquisitions' || pathname.startsWith('/documents/inbox');
+  if (href === '/acquisitions') {
+    return pathname === '/acquisitions' || pathname.startsWith('/acquisitions/') || pathname.startsWith('/documents/inbox');
+  }
   if (href === '/documents') {
     if (pathname.startsWith('/documents/history') || pathname.startsWith('/documents/disposed') || pathname.startsWith('/documents/inbox')) return false;
     return pathname === '/documents' || pathname.startsWith('/documents/new') || /^\/documents\/[^/]+$/.test(pathname);
   }
   if (href === '/documents/history') return pathname.startsWith('/documents/history');
   if (href === '/documents/disposed') return pathname.startsWith('/documents/disposed');
-  if (href === '/maintenances/expenses') return pathname.startsWith('/maintenances');
   return pathname === href || pathname.startsWith(`${href}/`);
+}
+
+/**
+ * Sotto questa soglia la sidebar diventa un pannello a scomparsa: i gruppi restano
+ * richiusi per tenere il menu corto e per non lasciare decine di link fuori schermo.
+ */
+export const compactShellMediaQuery = '(max-width: 940px)';
+
+/** Su desktop ogni gruppo e aperto: tutte le destinazioni sono raggiungibili con un click. */
+export function getExpandedNavigationGroupIds(): string[] {
+  return navigationGroups.map((group) => group.id);
+}
+
+/** Su schermo stretto resta aperto solo il gruppo della pagina corrente. */
+export function getCompactExpandedNavigationGroupIds(pathname: string): string[] {
+  const groupId = getActiveNavigationContext(pathname)?.groupId;
+  return groupId ? [groupId] : [];
+}
+
+/** Ogni gruppo si apre e si chiude in modo indipendente dagli altri. */
+export function toggleNavigationGroupId(expandedGroupIds: readonly string[], groupId: string): string[] {
+  return expandedGroupIds.includes(groupId)
+    ? expandedGroupIds.filter((id) => id !== groupId)
+    : [...expandedGroupIds, groupId];
 }
 
 export function getActiveNavigationContext(pathname: string): {

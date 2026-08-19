@@ -155,7 +155,7 @@ export default async function TollBatchDetailPage({ params, searchParams }: Toll
           <div className="actions-row">
             <Link className="secondary-button" href="/tolls">
               <ArrowLeft size={16} aria-hidden />
-              Fatture autostrade
+              Pedaggi
             </Link>
             {hasReportableEntries ? (
               <FilteredReportButton baseHref="/api/reports/tolls" fixedParams={{ batchId }} label="Report confermati" />

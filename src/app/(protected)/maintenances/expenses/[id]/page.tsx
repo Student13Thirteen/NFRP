@@ -7,9 +7,9 @@ import { PageHeader } from '@/components/PageHeader';
 import { formatDate } from '@/lib/dates';
 import { prisma } from '@/lib/db';
 import {
-  computeLineVat,
   expenseDocumentInclude,
   formatEuroCents,
+  formatUnitPrice,
   formatQuantityMilli,
   getExpenseAllocationLabel,
   getExpenseLineAllocations
@@ -37,9 +37,9 @@ export default async function ExpenseDocumentDetailPage({ params, searchParams }
         description={`${doc.documentNumber ? `${doc.documentNumber} · ` : ''}${formatDate(doc.registeredAt)}`}
         action={
           <div className="actions-row">
-            <Link className="secondary-button" href="/maintenances/expenses">
+            <Link className="secondary-button" href="/maintenances">
               <ArrowLeft size={16} aria-hidden />
-              Fatture e DDT
+              Torna alle manutenzioni
             </Link>
             {doc.filePath ? (
               <Link className="secondary-button" href={`/api/maintenances/expenses/${doc.id}/file`} target="_blank">
@@ -52,7 +52,12 @@ export default async function ExpenseDocumentDetailPage({ params, searchParams }
                 <PencilLine size={16} aria-hidden />
                 Valida documento
               </Link>
-            ) : null}
+            ) : (
+              <Link className="primary-button" href={`/maintenances/expenses/${doc.id}/edit`}>
+                <PencilLine size={16} aria-hidden />
+                {doc.filePath ? 'Modifica dettagli' : 'Modifica / aggiungi PDF'}
+              </Link>
+            )}
           </div>
         }
       />
@@ -106,14 +111,17 @@ export default async function ExpenseDocumentDetailPage({ params, searchParams }
               const allocations = getExpenseLineAllocations(line);
               return (
               <tr key={line.id}>
-                <td>{line.description}</td>
+                <td>
+                  {line.description}
+                  {line.notes ? <small className="muted" style={{ display: 'block', marginTop: 4 }}>{line.notes}</small> : null}
+                </td>
                 <td>{line.code || '-'}</td>
                 <td>
                   {formatQuantityMilli(line.quantityMilli)} {line.unit}
                 </td>
-                <td>{formatEuroCents(line.unitPriceCents)}</td>
+                <td>{formatUnitPrice(line.unitPriceMilliEuro)}</td>
                 <td>{line.vatRatePercent}%</td>
-                <td>{formatEuroCents(computeLineVat(line.unitPriceCents, line.vatRatePercent).totalCents)}</td>
+                <td>{formatUnitPrice(Math.round(line.unitPriceMilliEuro * (100 + line.vatRatePercent) / 100))}</td>
                 <td>{formatEuroCents(line.imponibileCents)}</td>
                 <td>{formatEuroCents(line.totalCents)}</td>
                 <td>
@@ -121,6 +129,7 @@ export default async function ExpenseDocumentDetailPage({ params, searchParams }
                     {allocations.map((allocation) => (
                       <span key={allocation.id}>
                         {formatQuantityMilli(allocation.quantityMilli)} {line.unit} → {getExpenseAllocationLabel(allocation)}
+                        {allocation.driver ? ` · Autista ${allocation.driver.lastName} ${allocation.driver.firstName}` : ''}
                       </span>
                     ))}
                   </div>
@@ -141,13 +150,18 @@ export default async function ExpenseDocumentDetailPage({ params, searchParams }
         </table>
       </section>
 
-      {doc.notes ? <p style={{ marginTop: 18 }}>{doc.notes}</p> : null}
+      {doc.notes ? (
+        <section className="panel" style={{ marginTop: 18 }}>
+          <h2 style={{ marginTop: 0 }}>Note e dettagli</h2>
+          <p style={{ marginBottom: 0, whiteSpace: 'pre-wrap' }}>{doc.notes}</p>
+        </section>
+      ) : null}
 
       <div className="record-actions" style={{ marginTop: 18 }}>
         <form action={deleteExpenseFromDetailAction.bind(null, doc.id)}>
           <ConfirmSubmitButton
             className="danger-button"
-            message="Eliminare definitivamente questo documento di spesa e il PDF collegato? Le giacenze di magazzino già caricate non vengono ripristinate."
+            message="Eliminare definitivamente questa manutenzione e il PDF collegato? Le giacenze di magazzino già caricate non vengono ripristinate."
           >
             <Trash2 size={16} aria-hidden />
             Elimina documento

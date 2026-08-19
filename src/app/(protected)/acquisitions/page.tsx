@@ -208,7 +208,7 @@ export default async function AcquisitionsPage() {
       href: document.status === 'PENDING' ? '/maintenances/expenses/review' : `/maintenances/expenses/${document.id}`,
       label: document.status === 'PENDING' ? 'Da controllare' : 'Confermato',
       pending: document.status === 'PENDING' ? 1 : 0,
-      source: document.source === 'MAINTENANCE_IMPORT' ? 'Manutenzione OCR' : 'Fatture e DDT'
+      source: document.source === 'MAINTENANCE_IMPORT' ? 'Manutenzione OCR' : 'Manutenzioni e ricambi'
     })),
     ...leaseContractEvents.map((contract) => ({
       createdAt: contract.createdAt,
@@ -234,9 +234,9 @@ export default async function AcquisitionsPage() {
         title="Acquisizioni"
         description="Un solo punto di ingresso per documenti, fatture e dati operativi."
         action={
-          <Link className="secondary-button" href="/maintenances/expenses/new">
+          <Link className="secondary-button" href="/maintenances/new">
             <Plus size={16} aria-hidden />
-            Nuova fattura / DDT manuale
+            Inserisci nuova manutenzione
           </Link>
         }
       />

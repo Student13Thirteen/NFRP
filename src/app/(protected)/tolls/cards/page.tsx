@@ -24,11 +24,11 @@ export default async function TollCardsPage() {
         action={
           <div className="actions-row">
             <Link className="secondary-button" href="/tolls">
-              Autostrade
+              Pedaggi
             </Link>
             <Link className="primary-button" href="/tolls/import">
               <UploadCloud size={16} aria-hidden />
-              Import CSV
+              Import autostrade CSV
             </Link>
           </div>
         }

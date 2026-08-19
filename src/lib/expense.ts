@@ -2,6 +2,7 @@ import { Prisma, type Tractor, type Trailer } from '@prisma/client';
 import { getVehicleLabel } from '@/lib/trips';
 import { buildMaintenanceVehicleOptions } from '@/lib/maintenance';
 import { formatQuantityMilli, type AllocationKind } from '@/lib/expense-shared';
+import { expenseDriverName } from '@/lib/expense-driver';
 
 export * from '@/lib/expense-shared';
 
@@ -14,7 +15,8 @@ export const expenseLineInclude = Prisma.validator<Prisma.ExpenseLineInclude>()(
     include: {
       tractor: true,
       trailer: true,
-      warehouseItem: true
+      warehouseItem: true,
+      driver: true
     },
     orderBy: { position: 'asc' }
   }
@@ -34,8 +36,8 @@ export type ExpenseLineAllocationWithRelations = ExpenseLineWithRelations['alloc
 
 export type ExpenseAllocationView = Pick<
   ExpenseLineAllocationWithRelations,
-  'id' | 'position' | 'allocationType' | 'quantityMilli' | 'tractorId' | 'trailerId' | 'warehouseItemId' | 'odometerKm'
-> & Pick<ExpenseLineAllocationWithRelations, 'tractor' | 'trailer' | 'warehouseItem'>;
+  'id' | 'position' | 'allocationType' | 'quantityMilli' | 'tractorId' | 'trailerId' | 'warehouseItemId' | 'driverId' | 'odometerKm'
+> & Pick<ExpenseLineAllocationWithRelations, 'tractor' | 'trailer' | 'warehouseItem' | 'driver'>;
 
 /** Fallback temporaneo per bozze importate prima che la revisione crei le quote figlie. */
 export function getExpenseLineAllocations(line: ExpenseLineWithRelations): ExpenseAllocationView[] {
@@ -48,10 +50,12 @@ export function getExpenseLineAllocations(line: ExpenseLineWithRelations): Expen
     tractorId: line.tractorId,
     trailerId: line.trailerId,
     warehouseItemId: line.warehouseItemId,
+    driverId: null,
     odometerKm: line.odometerKm,
     tractor: line.tractor,
     trailer: line.trailer,
-    warehouseItem: line.warehouseItem
+    warehouseItem: line.warehouseItem,
+    driver: null
   }];
 }
 
@@ -115,6 +119,8 @@ export function filterAndSortExpenseDocuments(
           ...getExpenseLineAllocations(line).flatMap((allocation) => [
             allocation.tractor?.plate,
             allocation.trailer?.plate,
+            allocation.driver?.firstName,
+            allocation.driver?.lastName,
             allocation.odometerKm
           ])
         ])
@@ -177,7 +183,8 @@ export function getAllocationLabel(line: ExpenseLineWithRelations): string {
 export function getExpenseLineAllocationDetails(line: ExpenseLineWithRelations): string[] {
   return getExpenseLineAllocations(line).map((allocation) => {
     const km = allocation.odometerKm === null ? '' : ` · ${allocation.odometerKm.toLocaleString('it-IT')} km`;
-    return `${formatQuantityMilli(allocation.quantityMilli)} ${line.unit} → ${getExpenseAllocationLabel(allocation)}${km}`;
+    const driver = allocation.driver ? ` · Autista ${expenseDriverName(allocation.driver)}` : '';
+    return `${formatQuantityMilli(allocation.quantityMilli)} ${line.unit} → ${getExpenseAllocationLabel(allocation)}${driver}${km}`;
   });
 }
 

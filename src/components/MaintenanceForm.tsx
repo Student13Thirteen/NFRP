@@ -9,6 +9,7 @@ import { FileUpload } from '@/components/FileUpload';
 import { QuickSupplierField } from '@/components/QuickSupplierField';
 import { RecoverableForm } from '@/components/RecoverableForm';
 import type { DatedDriverAssignment } from '@/lib/driver-assignment-core';
+import { tractorIdForExpenseAllocation, type TrailerTractorLink } from '@/lib/expense-driver';
 import {
   getMaintenanceStatusLabel,
   type MaintenanceSelectOption,
@@ -38,6 +39,7 @@ type MaintenanceFormProps = {
   drivers: MaintenanceSelectOption[];
   vehicles: MaintenanceVehicleOption[];
   driverAssignments: DatedDriverAssignment[];
+  trailerTractorLinks: TrailerTractorLink[];
   defaultValues?: MaintenanceFormValues;
   submitLabel: string;
   showStatus?: boolean;
@@ -63,6 +65,7 @@ export function MaintenanceForm({
   drivers,
   vehicles,
   driverAssignments,
+  trailerTractorLinks,
   defaultValues,
   submitLabel,
   showStatus = false,
@@ -75,8 +78,8 @@ export function MaintenanceForm({
   const [vehicleKey, setVehicleKey] = useState(defaultValues?.vehicleKey || '');
   const handleDateChange = useCallback((value: string) => setMaintenanceDate(value), []);
   const tractorId = useMemo(
-    () => vehicleKey.startsWith('TRACTOR:') ? vehicleKey.slice('TRACTOR:'.length) : null,
-    [vehicleKey]
+    () => tractorIdForExpenseAllocation(vehicleKey, trailerTractorLinks),
+    [trailerTractorLinks, vehicleKey]
   );
 
   return (
@@ -150,7 +153,8 @@ export function MaintenanceForm({
         </label>
         <label>
           Importo
-          <input name="amount" inputMode="decimal" defaultValue={defaultValues?.amount || ''} placeholder="Es. 1720,20" disabled={disabled} />
+          <input name="amount" inputMode="decimal" defaultValue={defaultValues?.amount || ''} placeholder="Es. 1720.20" disabled={disabled} />
+          <small className="field-hint">Usa il punto come separatore decimale.</small>
         </label>
       </div>
 

@@ -1,7 +1,7 @@
 import { requireUser } from '@/lib/auth';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { Download, Plus, Trash2 } from 'lucide-react';
+import { Download, PencilLine, Plus, Trash2 } from 'lucide-react';
 import { ConfirmSubmitButton } from '@/components/ConfirmSubmitButton';
 import { MaintenanceForm } from '@/components/MaintenanceForm';
 import { PageHeader } from '@/components/PageHeader';
@@ -28,10 +28,7 @@ type MaintenanceDetailPageProps = {
 
 function amountInputValue(value: number | null | undefined): string {
   if (value === null || value === undefined) return '';
-  return new Intl.NumberFormat('it-IT', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2
-  }).format(value / 100);
+  return (value / 100).toFixed(2);
 }
 
 function formatFileSize(value: number | null | undefined): string {
@@ -49,6 +46,8 @@ export default async function MaintenanceDetailPage({ params, searchParams }: Ma
   });
   if (!maintenance) notFound();
 
+  const maintenanceVehicleKey = getMaintenanceVehicleKey(maintenance);
+
   const [categories, suppliers, drivers, tractors, trailers, driverAssignments] = await Promise.all([
     prisma.category.findMany({ orderBy: [{ active: 'desc' }, { name: 'asc' }] }),
     prisma.supplier.findMany({ orderBy: [{ active: 'desc' }, { name: 'asc' }] }),
@@ -60,18 +59,12 @@ export default async function MaintenanceDetailPage({ params, searchParams }: Ma
       orderBy: { validFrom: 'desc' }
     })
   ]);
-  const newMaintenanceParams = new URLSearchParams({ categoryId: maintenance.categoryId });
-  if (maintenance.supplierId) newMaintenanceParams.set('supplierId', maintenance.supplierId);
-  if (maintenance.driverId) newMaintenanceParams.set('driverId', maintenance.driverId);
-  const maintenanceVehicleKey = getMaintenanceVehicleKey(maintenance);
-  if (maintenanceVehicleKey) newMaintenanceParams.set('vehicleKey', maintenanceVehicleKey);
-  const newMaintenanceHref = `/maintenances/new?${newMaintenanceParams.toString()}`;
 
   return (
     <>
       <PageHeader
         title={maintenance.title}
-        description={`${maintenance.category.name} - ${getMaintenanceVehicleLabel(maintenance)}`}
+        description={`Scheda storica · ${maintenance.category.name} - ${getMaintenanceVehicleLabel(maintenance)}`}
         action={
           <div className="actions-row">
             {maintenance.filePath ? (
@@ -80,9 +73,13 @@ export default async function MaintenanceDetailPage({ params, searchParams }: Ma
                 Apri PDF
               </Link>
             ) : null}
-            <Link className="primary-button" href={newMaintenanceHref}>
+            <Link className="secondary-button" href="/maintenances/new">
               <Plus size={16} aria-hidden />
-              Nuova manutenzione
+              Inserisci nuova manutenzione
+            </Link>
+            <Link className="primary-button" href="#modifica-manutenzione">
+              <PencilLine size={16} aria-hidden />
+              {maintenance.filePath ? 'Modifica manutenzione' : 'Modifica / aggiungi PDF'}
             </Link>
           </div>
         }
@@ -161,7 +158,7 @@ export default async function MaintenanceDetailPage({ params, searchParams }: Ma
           </div>
         </section>
 
-        <section className="panel">
+        <section className="panel" id="modifica-manutenzione">
           <h2>Modifica manutenzione</h2>
           <MaintenanceForm
             action={`/api/maintenances/${maintenance.id}/update`}
@@ -175,6 +172,10 @@ export default async function MaintenanceDetailPage({ params, searchParams }: Ma
               ...assignment,
               validFrom: toDateInputValue(assignment.validFrom),
               validTo: assignment.validTo ? toDateInputValue(assignment.validTo) : null
+            }))}
+            trailerTractorLinks={trailers.map((trailer) => ({
+              trailerId: trailer.id,
+              tractorId: trailer.assignedTractorId
             }))}
             defaultValues={{
               title: maintenance.title,

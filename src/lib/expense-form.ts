@@ -8,11 +8,12 @@ import { formString, optionalFormString } from '@/lib/form';
 import {
   allocationToDbFields,
   computeLineVat,
-  imponibileCentsFromUnit,
+  imponibileCentsFromUnitMilliEuro,
   sumDocumentTotals
 } from '@/lib/expense';
 import { buildExpenseReviewReasons, type AnomalyLine } from '@/lib/expense-anomalies';
 import { confirmExpenseDocumentInTransaction } from '@/lib/expense-confirm';
+import { EXPENSE_DRIVER_AUTO, EXPENSE_DRIVER_NONE } from '@/lib/expense-driver';
 
 const ALLOWED_VAT_RATES = new Set([0, 4, 5, 10, 22]);
 
@@ -51,19 +52,23 @@ function parseDate(value: string, required: boolean, label: string): Date | null
   return date;
 }
 
-/** "1.234,56" / "1234,56" / "12.50" -> centesimi. Convenzione italiana come le altre sezioni. */
-function parseAmountToCents(value: string | null, label: string): number {
+/** Input manuale come Rifornimenti: punto decimale, tre cifre, nessun separatore migliaia. */
+function parsePriceToMilliEuro(value: string | null, label: string): number {
   if (value === null || value.trim() === '') return 0;
-  const normalized = value.replace(/\./g, '').replace(',', '.').trim();
-  if (!/^\d+(\.\d{1,2})?$/.test(normalized)) throw new Error(`${label} non valido.`);
-  return Math.round(Number(normalized) * 100);
+  const normalized = value.replace(',', '.').trim();
+  if (!/^\d+(\.\d{1,3})?$/.test(normalized)) {
+    throw new Error(`${label} non valido. Usa il punto e fino a tre decimali (es. 3.312).`);
+  }
+  return Math.round(Number(normalized) * 1000);
 }
 
-/** Quantità decimale ("0,5", "5", "2,5") -> millesimi. */
+/** Quantità decimale con punto (la virgola resta tollerata per bozze precedenti) -> millesimi. */
 function parseQuantityToMilli(value: string | null): number {
   if (value === null || value.trim() === '') return 1000;
-  const normalized = value.replace(/\./g, '').replace(',', '.').trim();
-  if (!/^\d+(\.\d{1,3})?$/.test(normalized)) throw new Error('Quantità non valida.');
+  const normalized = value.replace(',', '.').trim();
+  if (!/^\d+(\.\d{1,3})?$/.test(normalized)) {
+    throw new Error('Quantità non valida. Usa il punto e fino a tre decimali.');
+  }
   return Math.round(Number(normalized) * 1000);
 }
 
@@ -112,6 +117,7 @@ export type ParsedExpenseLine = {
   quantityMilli: number;
   unit: string;
   unitPriceCents: number;
+  unitPriceMilliEuro: number;
   imponibileCents: number;
   vatRatePercent: number;
   vatCents: number;
@@ -132,7 +138,112 @@ export type ParsedExpenseAllocation = {
   tractorId: string | null;
   trailerId: string | null;
   odometerKm: number | null;
+  driverSelection: string;
+  driverId: string | null;
 };
+
+export type ParsedConfirmedExpenseDetails = {
+  expectedUpdatedAt: Date;
+  notes: string | null;
+  lines: Array<{
+    id: string;
+    description: string;
+    code: string | null;
+    notes: string | null;
+  }>;
+  allocations: Array<{
+    id: string;
+    driverSelection: string;
+  }>;
+};
+
+type ExpenseDriverDbClient = Pick<Prisma.TransactionClient, 'driver' | 'trailer' | 'tractorDriverAssignment'>;
+
+type DriverResolvableAllocation = Pick<
+  ParsedExpenseAllocation,
+  'allocationType' | 'tractorId' | 'trailerId' | 'driverSelection'
+>;
+
+export async function resolveExpenseAllocationDriverIds(
+  allocations: DriverResolvableAllocation[],
+  allocationDate: Date,
+  client: ExpenseDriverDbClient
+): Promise<Array<string | null>> {
+  const manualDriverIds = Array.from(new Set(
+    allocations
+      .map((allocation) => allocation.driverSelection)
+      .filter((selection) => selection !== EXPENSE_DRIVER_AUTO && selection !== EXPENSE_DRIVER_NONE)
+  ));
+  if (manualDriverIds.length > 0) {
+    const existingDrivers = await client.driver.findMany({
+      where: { id: { in: manualDriverIds } },
+      select: { id: true }
+    });
+    if (existingDrivers.length !== manualDriverIds.length) throw new Error('Autista selezionato non valido.');
+  }
+
+  const automaticTrailerIds = Array.from(new Set(
+    allocations
+      .filter((allocation) => allocation.driverSelection === EXPENSE_DRIVER_AUTO && allocation.allocationType === 'TRAILER')
+      .map((allocation) => allocation.trailerId)
+      .filter((id): id is string => Boolean(id))
+  ));
+  const trailers = automaticTrailerIds.length > 0
+    ? await client.trailer.findMany({
+        where: { id: { in: automaticTrailerIds } },
+        select: { id: true, assignedTractorId: true }
+      })
+    : [];
+  const tractorByTrailerId = new Map(trailers.map((trailer) => [trailer.id, trailer.assignedTractorId]));
+  const automaticTractorIds = Array.from(new Set(
+    allocations
+      .filter((allocation) => allocation.driverSelection === EXPENSE_DRIVER_AUTO)
+      .map((allocation) => allocation.tractorId || (allocation.trailerId ? tractorByTrailerId.get(allocation.trailerId) : null))
+      .filter((id): id is string => Boolean(id))
+  ));
+  const assignments = automaticTractorIds.length > 0
+    ? await client.tractorDriverAssignment.findMany({
+        where: {
+          tractorId: { in: automaticTractorIds },
+          validFrom: { lte: allocationDate },
+          OR: [{ validTo: null }, { validTo: { gte: allocationDate } }]
+        },
+        orderBy: { validFrom: 'desc' },
+        select: { tractorId: true, driverId: true }
+      })
+    : [];
+  const driverByTractorId = new Map<string, string>();
+  for (const assignment of assignments) {
+    if (!driverByTractorId.has(assignment.tractorId)) {
+      driverByTractorId.set(assignment.tractorId, assignment.driverId);
+    }
+  }
+
+  return allocations.map((allocation) => {
+    if (allocation.allocationType !== 'TRACTOR' && allocation.allocationType !== 'TRAILER') return null;
+    if (allocation.driverSelection === EXPENSE_DRIVER_NONE) return null;
+    if (allocation.driverSelection !== EXPENSE_DRIVER_AUTO) return allocation.driverSelection;
+    const tractorId = allocation.tractorId || (allocation.trailerId ? tractorByTrailerId.get(allocation.trailerId) : null);
+    return tractorId ? driverByTractorId.get(tractorId) || null : null;
+  });
+}
+
+async function resolveExpenseLineDrivers(
+  lines: ParsedExpenseLine[],
+  allocationDate: Date,
+  client: ExpenseDriverDbClient
+): Promise<ParsedExpenseLine[]> {
+  const flatAllocations = lines.flatMap((line) => line.allocations);
+  const driverIds = await resolveExpenseAllocationDriverIds(flatAllocations, allocationDate, client);
+  let driverIndex = 0;
+  return lines.map((line) => ({
+    ...line,
+    allocations: line.allocations.map((allocation) => ({
+      ...allocation,
+      driverId: driverIds[driverIndex++] ?? null
+    }))
+  }));
+}
 
 function cell(values: string[], index: number): string | null {
   const value = (values[index] ?? '').trim();
@@ -153,6 +264,7 @@ export function parseExpenseLines(formData: FormData): ParsedExpenseLine[] {
   const allocationQuantities = formData.getAll('lineAllocationQuantity').map(String);
   const allocationKeys = formData.getAll('lineAllocationKey').map(String);
   const allocationOdometerKms = formData.getAll('lineAllocationOdometerKm').map(String);
+  const allocationDriverSelections = formData.getAll('lineAllocationDriverSelection').map(String);
   const legacyOdometerKms = formData.getAll('lineOdometerKm').map(String);
 
   const allocationsByLine = new Map<string, ParsedExpenseAllocation[]>();
@@ -169,7 +281,9 @@ export function parseExpenseLines(formData: FormData): ParsedExpenseLine[] {
         allocationType: allocation.allocationType,
         tractorId: allocation.tractorId,
         trailerId: allocation.trailerId,
-        odometerKm: parseOptionalOdometer(cell(allocationOdometerKms, index))
+        odometerKm: parseOptionalOdometer(cell(allocationOdometerKms, index)),
+        driverSelection: cell(allocationDriverSelections, index) || EXPENSE_DRIVER_AUTO,
+        driverId: null
       });
       allocationsByLine.set(lineKey, current);
     }
@@ -181,9 +295,10 @@ export function parseExpenseLines(formData: FormData): ParsedExpenseLine[] {
     if (!description) continue; // riga vuota, ignorata
 
     const quantityMilli = parseQuantityToMilli(cell(quantities, i));
-    const unitPriceCents = parseAmountToCents(cell(unitPrices, i), 'Prezzo unitario');
+    const unitPriceMilliEuro = parsePriceToMilliEuro(cell(unitPrices, i), 'Prezzo unitario');
+    const unitPriceCents = Math.round(unitPriceMilliEuro / 10);
     const vatRatePercent = parseVatRate(cell(vatRates, i));
-    const imponibileCents = imponibileCentsFromUnit(quantityMilli, unitPriceCents);
+    const imponibileCents = imponibileCentsFromUnitMilliEuro(quantityMilli, unitPriceMilliEuro);
     const { vatCents, totalCents } = computeLineVat(imponibileCents, vatRatePercent);
     const lineKey = (lineKeys[i] || `line-${i}`).trim();
     const parsedAllocations = allocationsByLine.get(lineKey);
@@ -197,7 +312,9 @@ export function parseExpenseLines(formData: FormData): ParsedExpenseLine[] {
             allocationType: allocation.allocationType,
             tractorId: allocation.tractorId,
             trailerId: allocation.trailerId,
-            odometerKm: parseOptionalOdometer(cell(legacyOdometerKms, i))
+            odometerKm: parseOptionalOdometer(cell(legacyOdometerKms, i)),
+            driverSelection: cell(allocationDriverSelections, i) || EXPENSE_DRIVER_AUTO,
+            driverId: null
           }];
         })();
     const assignedQuantityMilli = lineAllocations.reduce((sum, allocation) => sum + allocation.quantityMilli, 0);
@@ -215,6 +332,7 @@ export function parseExpenseLines(formData: FormData): ParsedExpenseLine[] {
       quantityMilli,
       unit: cell(units, i) || 'pz',
       unitPriceCents,
+      unitPriceMilliEuro,
       imponibileCents,
       vatRatePercent,
       vatCents,
@@ -230,6 +348,69 @@ export function parseExpenseLines(formData: FormData): ParsedExpenseLine[] {
   }
 
   return lines;
+}
+
+function optionalBoundedText(value: string, maxLength: number, label: string): string | null {
+  const normalized = value.trim();
+  if (!normalized) return null;
+  if (normalized.length > maxLength) throw new Error(`${label}: massimo ${maxLength} caratteri.`);
+  return normalized;
+}
+
+/**
+ * I documenti confermati possono ricevere integrazioni descrittive e il PDF,
+ * ma non modifiche a importi, IVA, quantità o allocazioni già contabilizzate.
+ */
+export function parseConfirmedExpenseDetails(formData: FormData): ParsedConfirmedExpenseDetails {
+  const expectedUpdatedAtValue = formString(formData, 'expectedUpdatedAt');
+  const expectedUpdatedAt = new Date(expectedUpdatedAtValue);
+  if (!expectedUpdatedAtValue || Number.isNaN(expectedUpdatedAt.getTime())) {
+    throw new Error('Versione del documento non valida. Ricarica la pagina e riprova.');
+  }
+
+  const lineIds = formData.getAll('lineId').map((value) => String(value).trim());
+  const descriptions = formData.getAll('lineDescription').map(String);
+  const codes = formData.getAll('lineCode').map(String);
+  const lineNotes = formData.getAll('lineNotes').map(String);
+  const allocationIds = formData.getAll('allocationId').map((value) => String(value).trim());
+  const allocationDriverSelections = formData.getAll('allocationDriverSelection').map((value) => String(value).trim());
+  if (
+    lineIds.length === 0 ||
+    descriptions.length !== lineIds.length ||
+    codes.length !== lineIds.length ||
+    lineNotes.length !== lineIds.length ||
+    lineIds.some((id) => !id) ||
+    new Set(lineIds).size !== lineIds.length
+  ) {
+    throw new Error('Le righe del documento non sono complete. Ricarica la pagina e riprova.');
+  }
+  if (
+    allocationIds.length !== allocationDriverSelections.length ||
+    allocationIds.some((id) => !id) ||
+    new Set(allocationIds).size !== allocationIds.length
+  ) {
+    throw new Error('Le assegnazioni degli autisti non sono complete. Ricarica la pagina e riprova.');
+  }
+
+  return {
+    expectedUpdatedAt,
+    notes: optionalBoundedText(formString(formData, 'notes'), 4000, 'Note documento'),
+    lines: lineIds.map((id, index) => {
+      const description = descriptions[index].trim();
+      if (!description) throw new Error(`Operazione ${index + 1}: descrizione obbligatoria.`);
+      if (description.length > 400) throw new Error(`Operazione ${index + 1}: descrizione troppo lunga.`);
+      return {
+        id,
+        description,
+        code: optionalBoundedText(codes[index], 120, `Operazione ${index + 1}, codice`),
+        notes: optionalBoundedText(lineNotes[index], 2000, `Operazione ${index + 1}, note`)
+      };
+    }),
+    allocations: allocationIds.map((id, index) => ({
+      id,
+      driverSelection: allocationDriverSelections[index] || EXPENSE_DRIVER_AUTO
+    }))
+  };
 }
 
 async function getSupplierName(supplierId: string | null): Promise<string | null> {
@@ -300,6 +481,7 @@ export async function createExpenseDocumentFromForm(formData: FormData): Promise
 
   try {
     return await prisma.$transaction(async (tx) => {
+      const resolvedLines = await resolveExpenseLineDrivers(lines, documentDate ?? registeredAt, tx);
       const created = await tx.expenseDocument.create({
         data: {
           status: 'PENDING',
@@ -315,13 +497,14 @@ export async function createExpenseDocumentFromForm(formData: FormData): Promise
           ...totals,
           ...storedPdf,
           lines: {
-            create: lines.map((line) => ({
+            create: resolvedLines.map((line) => ({
               position: line.position,
               code: line.code,
               description: line.description,
               quantityMilli: line.quantityMilli,
               unit: line.unit,
               unitPriceCents: line.unitPriceCents,
+              unitPriceMilliEuro: line.unitPriceMilliEuro,
               imponibileCents: line.imponibileCents,
               vatRatePercent: line.vatRatePercent,
               vatCents: line.vatCents,
@@ -339,6 +522,7 @@ export async function createExpenseDocumentFromForm(formData: FormData): Promise
                   allocationType: allocation.allocationType,
                   tractorId: allocation.tractorId,
                   trailerId: allocation.trailerId,
+                  driverId: allocation.driverId,
                   odometerKm: allocation.odometerKm
                 }))
               }
@@ -383,7 +567,7 @@ export async function updateExpenseDocumentLines(documentId: string, formData: F
   await prisma.$transaction(async (tx) => {
     const doc = await tx.expenseDocument.findUnique({
       where: { id: documentId },
-      select: { status: true, source: true }
+      select: { status: true, source: true, documentDate: true, registeredAt: true }
     });
     if (!doc) throw new Error('Documento di spesa non trovato.');
     if (doc.status !== 'PENDING') throw new Error('Il documento è già stato confermato.');
@@ -395,6 +579,11 @@ export async function updateExpenseDocumentLines(documentId: string, formData: F
     ) {
       throw new Error('Assegna ogni riga al Magazzino oppure a una targa valida prima di confermare.');
     }
+    const resolvedLines = await resolveExpenseLineDrivers(
+      lines,
+      documentDate ?? doc.documentDate ?? doc.registeredAt,
+      tx
+    );
     if (
       doc.source === 'LEASE_INVOICE_IMPORT' &&
       lines.some((line) => line.allocations.some(
@@ -418,13 +607,14 @@ export async function updateExpenseDocumentLines(documentId: string, formData: F
           : {}),
         ...totals,
         lines: {
-          create: lines.map((line) => ({
+          create: resolvedLines.map((line) => ({
             position: line.position,
             code: line.code,
             description: line.description,
             quantityMilli: line.quantityMilli,
             unit: line.unit,
             unitPriceCents: line.unitPriceCents,
+            unitPriceMilliEuro: line.unitPriceMilliEuro,
             imponibileCents: line.imponibileCents,
             vatRatePercent: line.vatRatePercent,
             vatCents: line.vatCents,
@@ -442,6 +632,7 @@ export async function updateExpenseDocumentLines(documentId: string, formData: F
                 allocationType: allocation.allocationType,
                 tractorId: allocation.tractorId,
                 trailerId: allocation.trailerId,
+                driverId: allocation.driverId,
                 odometerKm: allocation.odometerKm
               }))
             }
@@ -450,4 +641,120 @@ export async function updateExpenseDocumentLines(documentId: string, formData: F
       }
     });
   });
+}
+
+export async function updateConfirmedExpenseDocumentDetails(documentId: string, formData: FormData): Promise<void> {
+  const details = parseConfirmedExpenseDetails(formData);
+  const uploadedPdf = getOptionalPdf(formData);
+  const storedPdf = uploadedPdf ? await storePdfFile(uploadedPdf) : null;
+  let previousFilePath: string | null = null;
+
+  try {
+    previousFilePath = await prisma.$transaction(async (tx) => {
+      const current = await tx.expenseDocument.findUnique({
+        where: { id: documentId },
+        select: {
+          status: true,
+          updatedAt: true,
+          filePath: true,
+          documentDate: true,
+          registeredAt: true,
+          lines: {
+            select: {
+              id: true,
+              allocations: {
+                select: {
+                  id: true,
+                  allocationType: true,
+                  tractorId: true,
+                  trailerId: true
+                }
+              }
+            }
+          }
+        }
+      });
+      if (!current) throw new Error('Documento di spesa non trovato.');
+      if (current.status !== 'CONFIRMED') {
+        throw new Error('Il documento è ancora da validare: modificalo dalla coda di revisione.');
+      }
+
+      const currentLineIds = current.lines.map((line) => line.id).sort();
+      const submittedLineIds = details.lines.map((line) => line.id).sort();
+      if (
+        currentLineIds.length !== submittedLineIds.length ||
+        currentLineIds.some((id, index) => id !== submittedLineIds[index])
+      ) {
+        throw new Error('Le righe del documento sono cambiate. Ricarica la pagina prima di salvare.');
+      }
+      const currentAllocations = current.lines.flatMap((line) => line.allocations ?? []);
+      const currentAllocationIds = currentAllocations.map((allocation) => allocation.id).sort();
+      const submittedAllocationIds = details.allocations.map((allocation) => allocation.id).sort();
+      if (
+        currentAllocationIds.length !== submittedAllocationIds.length ||
+        currentAllocationIds.some((id, index) => id !== submittedAllocationIds[index])
+      ) {
+        throw new Error('Le destinazioni del documento sono cambiate. Ricarica la pagina prima di salvare.');
+      }
+      const driverSelectionByAllocationId = new Map(
+        details.allocations.map((allocation) => [allocation.id, allocation.driverSelection])
+      );
+      const resolvedDriverIds = await resolveExpenseAllocationDriverIds(
+        currentAllocations.map((allocation) => ({
+          ...allocation,
+          driverSelection: driverSelectionByAllocationId.get(allocation.id) || EXPENSE_DRIVER_AUTO
+        })),
+        current.documentDate ?? current.registeredAt,
+        tx
+      );
+
+      const claimed = await tx.expenseDocument.updateMany({
+        where: {
+          id: documentId,
+          status: 'CONFIRMED',
+          updatedAt: details.expectedUpdatedAt
+        },
+        data: {
+          notes: details.notes,
+          ...(storedPdf ? storedPdf : {})
+        }
+      });
+      if (claimed.count !== 1) {
+        throw new Error('Il documento è stato aggiornato da un’altra pagina. Ricaricalo e riprova.');
+      }
+
+      for (const line of details.lines) {
+        await tx.expenseLine.update({
+          where: { id: line.id },
+          data: {
+            description: line.description,
+            code: line.code,
+            notes: line.notes
+          }
+        });
+      }
+      for (let index = 0; index < currentAllocations.length; index += 1) {
+        await tx.expenseLineAllocation.update({
+          where: { id: currentAllocations[index].id },
+          data: { driverId: resolvedDriverIds[index] }
+        });
+      }
+
+      return current.filePath;
+    });
+  } catch (error) {
+    if (storedPdf?.filePath) await removeStoredPdf(storedPdf.filePath).catch(() => undefined);
+    throw error;
+  }
+
+  if (storedPdf && previousFilePath) {
+    try {
+      await removeStoredPdf(previousFilePath);
+    } catch (error) {
+      console.error('Impossibile eliminare il vecchio PDF del documento di spesa.', {
+        documentId,
+        error: error instanceof Error ? error.message : String(error)
+      });
+    }
+  }
 }

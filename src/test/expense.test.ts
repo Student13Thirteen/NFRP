@@ -7,6 +7,7 @@ import {
   filterAndSortExpenseDocuments,
   imponibileCentsFromTotal,
   imponibileCentsFromUnit,
+  imponibileCentsFromUnitMilliEuro,
   normalizeExpenseDocumentListFilters,
   parseAllocationKey,
   sumDocumentTotals
@@ -60,6 +61,13 @@ describe('imponibileCentsFromUnit', () => {
 
   it('gestisce quantità frazionarie (0,5 lt a 2,00 = 1,00)', () => {
     expect(imponibileCentsFromUnit(500, 200)).toBe(100);
+  });
+});
+
+describe('imponibileCentsFromUnitMilliEuro', () => {
+  it('mantiene il terzo decimale del prezzo fino al totale di riga', () => {
+    expect(imponibileCentsFromUnitMilliEuro(5000, 3312)).toBe(1656);
+    expect(imponibileCentsFromUnitMilliEuro(1000, 4950)).toBe(495);
   });
 });
 
@@ -178,6 +186,7 @@ describe('registro fatture e DDT', () => {
           quantityMilli: 1000,
           unit: 'pz',
           unitPriceCents: 1000,
+          unitPriceMilliEuro: 10000,
           imponibileCents: 1000,
           vatRatePercent: 22,
           vatCents: 220,
@@ -271,7 +280,7 @@ describe('registro fatture e DDT', () => {
       id: 'DDT-KM',
       registeredAt: '2026-07-27T00:00:00.000Z',
       updatedAt: '2026-07-31T08:00:00.000Z',
-      plate: 'ZZ104ZZ',
+      plate: 'ZZ103ZZ',
       tractorId: 'tractor-gk',
       odometerKm: 260778
     });
