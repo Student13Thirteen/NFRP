@@ -384,7 +384,7 @@ Before using NFRP with real data, read [SECURITY.md](SECURITY.md). This is a sel
 | [Company branding](docs/BRANDING.md) | Name, logo, palette |
 | [Security model and limits](SECURITY.md) | Before real data |
 | [Product origin](docs/PRODUCT_ORIGIN.md) and [platform vision](docs/ERP_PLATFORM_VISION.md) | Where the project comes from and where it is going |
-| Release notes: [19 August 2026](docs/RELEASE_2026-08-19.md), [17 August 2026](docs/RELEASE_2026-08-17.md) | What changed, and what "parity with the operational edition" does and does not mean |
+| [Change history](docs/RELEASE_2026-08-19.md) | What changed in the latest synchronization, and what "parity with the operational edition" does and does not mean |
 
 NFRP is an AI-assisted, operator-directed project built around real operational requirements. It does not claim that every line was written by hand, nor that one configuration fits every company without review.
 
