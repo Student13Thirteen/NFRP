@@ -19,7 +19,7 @@ export default async function TollImportPage({ searchParams }: TollImportPagePro
         description="Carica il CSV originale: il sistema legge pedaggi, tratte, importi IVA, targhe e tessere senza passaggi da Excel."
         action={
           <Link className="secondary-button" href="/tolls">
-            Autostrade
+            Pedaggi
           </Link>
         }
       />

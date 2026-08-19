@@ -1,6 +1,6 @@
 import { requireUser } from '@/lib/auth';
 import Link from 'next/link';
-import { ArrowRight, CircleCheckBig, Container, FilePlus, FileUp, Fuel, Landmark, MapPinned, ReceiptText, Route, ScanLine, Warehouse, Wrench } from 'lucide-react';
+import { ArrowRight, CircleCheckBig, Container, FilePlus, Fuel, Landmark, MapPinned, ReceiptText, Route, ScanLine, Warehouse, Wrench } from 'lucide-react';
 import { DocumentTable } from '@/components/DocumentTable';
 import { PageHeader } from '@/components/PageHeader';
 import { daysUntil } from '@/lib/dates';
@@ -9,11 +9,12 @@ import {
   documentInclude,
   getDocumentVisualStatus
 } from '@/lib/documents';
+import { maintenanceToCloseFilterValue, maintenanceToCloseStatuses } from '@/lib/maintenance';
 import { getOperationalFleetDocumentWhere } from '@/lib/vehicle-lifecycle';
 
 export default async function DashboardPage() {
   await requireUser();
-  const [documents, documentQueue, tripQueue, fuelQueue, tollQueue, expenseQueue, leaseContractQueue, leaseInvoiceQueue, fuelWarnings, tollWarnings, tripsToBill, maintenanceOpen, stockWarnings] = await Promise.all([
+  const [documents, documentQueue, tripQueue, fuelQueue, tollQueue, expenseQueue, leaseContractQueue, leaseInvoiceQueue, fuelWarnings, tollWarnings, tripsToBill, maintenanceToClose, stockWarnings] = await Promise.all([
     prisma.document.findMany({
       where: getOperationalFleetDocumentWhere(),
       include: documentInclude,
@@ -29,7 +30,7 @@ export default async function DashboardPage() {
     prisma.fuelEntry.count({ where: { status: 'NEEDS_REVIEW' } }),
     prisma.tollEntry.count({ where: { status: 'NEEDS_REVIEW' } }),
     prisma.trip.count({ where: { billingStatus: 'TO_BILL', status: { not: 'CANCELLED' } } }),
-    prisma.maintenance.count({ where: { status: { in: ['OPEN', 'IN_PROGRESS'] } } }),
+    prisma.maintenance.count({ where: { status: { in: maintenanceToCloseStatuses } } }),
     prisma.warehouseItem.count({ where: { status: { in: ['LOW_STOCK', 'OUT_OF_STOCK'] } } })
   ]);
 
@@ -90,12 +91,12 @@ export default async function DashboardPage() {
       tone: tollWarnings > 0 ? 'danger' : 'ok'
     },
     {
-      href: '/maintenances?status=OPEN',
-      label: 'Manutenzioni aperte',
-      detail: 'Interventi aperti o in lavorazione',
-      value: maintenanceOpen,
+      href: `/maintenances?status=${maintenanceToCloseFilterValue}`,
+      label: 'Manutenzioni da chiudere',
+      detail: 'Interventi da fare o in lavorazione',
+      value: maintenanceToClose,
       icon: Wrench,
-      tone: maintenanceOpen > 0 ? 'warning' : 'ok'
+      tone: maintenanceToClose > 0 ? 'warning' : 'ok'
     },
     {
       href: '/warehouse?status=LOW_STOCK',
@@ -165,9 +166,9 @@ export default async function DashboardPage() {
         <Link href="/trips/new"><MapPinned size={17} aria-hidden /><span>Nuova consegna carburante</span></Link>
         <Link href="/trips/container/new"><Container size={17} aria-hidden /><span>Nuovo trasporto container</span></Link>
         <Link href="/fuel/new"><Fuel size={17} aria-hidden /><span>Nuovo rifornimento</span></Link>
-        <Link href="/maintenances/expenses/import"><FileUp size={17} aria-hidden /><span>Importa manutenzioni</span></Link>
+        <Link href="/maintenances"><Wrench size={17} aria-hidden /><span>Manutenzioni</span></Link>
         <Link href="/leases/import"><Landmark size={17} aria-hidden /><span>Importa leasing</span></Link>
-        <Link href="/maintenances/new"><Wrench size={17} aria-hidden /><span>Nuovo intervento</span></Link>
+        <Link href="/maintenances/new"><FilePlus size={17} aria-hidden /><span>Inserisci nuova manutenzione</span></Link>
       </section>
 
       <div className="section-heading-inline">

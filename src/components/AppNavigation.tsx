@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   ChevronDown,
   LogOut,
@@ -15,10 +15,14 @@ import { AppBrand } from '@/components/AppBrand';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import type { BrandingConfig } from '@/lib/branding-types';
 import {
+  compactShellMediaQuery,
   getActiveNavigationContext,
+  getCompactExpandedNavigationGroupIds,
+  getExpandedNavigationGroupIds,
   isActivePath,
   navigationGroups,
-  primaryNavigationItems
+  primaryNavigationItems,
+  toggleNavigationGroupId
 } from '@/components/app-navigation-config';
 
 type QueueCounts = {
@@ -46,7 +50,21 @@ export function AppNavigation({ branding, queueCounts, userEmail }: AppNavigatio
 function AppNavigationContent({ branding, queueCounts, userEmail, pathname }: AppNavigationProps & { pathname: string }) {
   const [open, setOpen] = useState(false);
   const activeContext = getActiveNavigationContext(pathname);
-  const [expandedGroupId, setExpandedGroupId] = useState<string | null>(activeContext?.groupId ?? null);
+  const [compactShell, setCompactShell] = useState(false);
+  const [expandedGroupIds, setExpandedGroupIds] = useState<string[]>(() => getExpandedNavigationGroupIds());
+
+  useEffect(() => {
+    const query = window.matchMedia(compactShellMediaQuery);
+    const apply = (isCompact: boolean) => {
+      setCompactShell(isCompact);
+      setExpandedGroupIds(isCompact ? getCompactExpandedNavigationGroupIds(pathname) : getExpandedNavigationGroupIds());
+    };
+
+    apply(query.matches);
+    const onChange = (event: MediaQueryListEvent) => apply(event.matches);
+    query.addEventListener('change', onChange);
+    return () => query.removeEventListener('change', onChange);
+  }, [pathname]);
 
   const renderNavigationItem = (item: (typeof primaryNavigationItems)[number], groupId: string | null) => {
     const Icon = item.icon;
@@ -60,7 +78,9 @@ function AppNavigationContent({ branding, queueCounts, userEmail, pathname }: Ap
         className={active ? 'is-active' : undefined}
         aria-current={active ? 'page' : undefined}
         onClick={() => {
-          if (groupId) setExpandedGroupId(groupId);
+          if (groupId) {
+            setExpandedGroupIds((current) => (current.includes(groupId) ? current : [...current, groupId]));
+          }
           setOpen(false);
         }}
       >
@@ -98,7 +118,7 @@ function AppNavigationContent({ branding, queueCounts, userEmail, pathname }: Ap
         tabIndex={open ? 0 : -1}
       />
 
-      <aside className={`sidebar${open ? ' is-open' : ''}`}>
+      <aside className={`sidebar${open ? ' is-open' : ''}`} inert={compactShell && !open}>
         <div className="sidebar-heading">
           <Link href="/dashboard" className="sidebar-brand" onClick={() => setOpen(false)}>
             <AppBrand branding={branding} variant="sidebar" />
@@ -114,31 +134,34 @@ function AppNavigationContent({ branding, queueCounts, userEmail, pathname }: Ap
           </div>
 
           <div className="sidebar-nav-sections" aria-label="Aree di lavoro">
-          {navigationGroups.map((group) => (
-            <div className={`sidebar-nav-group${activeContext?.groupId === group.id ? ' is-current' : ''}`} key={group.id}>
-              <button
-                className="sidebar-group-trigger"
-                type="button"
-                aria-expanded={expandedGroupId === group.id}
-                aria-controls={`sidebar-group-${group.id}`}
-                onClick={() => setExpandedGroupId((current) => current === group.id ? null : group.id)}
-              >
-                <group.icon size={19} aria-hidden />
-                <span className="sidebar-group-copy">
-                  <strong>{group.label}</strong>
-                  <small>{group.description}</small>
-                </span>
-                <ChevronDown className="sidebar-group-chevron" size={17} aria-hidden />
-              </button>
-              <div
-                className="sidebar-group-items"
-                id={`sidebar-group-${group.id}`}
-                hidden={expandedGroupId !== group.id}
-              >
-                {group.items.map((item) => renderNavigationItem(item, group.id))}
+          {navigationGroups.map((group) => {
+            const expanded = expandedGroupIds.includes(group.id);
+            const isCurrent = activeContext?.groupId === group.id;
+
+            // Il gruppo corrente resta evidenziato solo visivamente: `aria-current` appartiene alla
+            // voce aperta, cosi lo screen reader annuncia una sola destinazione corrente.
+            return (
+              <div className={`sidebar-nav-group${isCurrent ? ' is-current' : ''}`} key={group.id}>
+                <button
+                  className="sidebar-group-trigger"
+                  type="button"
+                  aria-expanded={expanded}
+                  aria-controls={`sidebar-group-${group.id}`}
+                  onClick={() => setExpandedGroupIds((current) => toggleNavigationGroupId(current, group.id))}
+                >
+                  <group.icon size={19} aria-hidden />
+                  <span className="sidebar-group-copy">
+                    <strong>{group.label}</strong>
+                    <small>{group.description}</small>
+                  </span>
+                  <ChevronDown className="sidebar-group-chevron" size={17} aria-hidden />
+                </button>
+                <div className="sidebar-group-items" id={`sidebar-group-${group.id}`} hidden={!expanded}>
+                  {group.items.map((item) => renderNavigationItem(item, group.id))}
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
           </div>
         </nav>
 

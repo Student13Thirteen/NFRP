@@ -20,7 +20,7 @@ export default async function TripsHubPage() {
         title="Viaggi"
         description="Due flussi separati: le consegne carburante conservano il loro schema; i trasporti container hanno committente, container, terminal, tappe, km ed extra dedicati."
         action={
-          <Link className="primary-button" href={pendingImports > 0 ? '/trips/import/review' : '/trips/import'}>
+          <Link className="primary-button" href="/trips/import">
             <UploadCloud size={16} aria-hidden />
             Importa bolle container
           </Link>

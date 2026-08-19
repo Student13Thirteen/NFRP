@@ -86,31 +86,39 @@ function buildGroupSummaries(rows: CostCenterRow[], mode: 'source' | 'plate'): G
   return Array.from(summaries.values()).sort((a, b) => b.costGrossCents + b.revenueGrossCents - (a.costGrossCents + a.revenueGrossCents));
 }
 
-function sourceHref(source: CostSource): string {
+/** Percorso e nome esatto della pagina aperta dal riepilogo, cosi il link dichiara la destinazione. */
+function sourceDestination(source: CostSource): { href: string; label: string } {
   switch (source) {
     case 'TRIPS':
-      return '/trips/fuel';
+      return { href: '/trips/fuel', label: 'Viaggi consegna carburante' };
     case 'CONTAINER_TRIPS':
-      return '/trips/container';
+      return { href: '/trips/container', label: 'Trasporti container' };
     case 'FUEL':
-      return '/fuel';
+      return { href: '/fuel', label: 'Rifornimenti' };
     case 'TOLLS':
-      return '/tolls';
+      return { href: '/tolls', label: 'Pedaggi' };
     case 'LEASE':
-      return '/leases';
+      return { href: '/leases', label: 'Leasing' };
     case 'EXPENSE':
-      return '/maintenances/expenses';
+      return { href: '/maintenances', label: 'Manutenzioni' };
     case 'MAINTENANCE':
-      return '/maintenances';
+      return { href: '/maintenances', label: 'Manutenzioni' };
     case 'DOCUMENT':
-      return '/documents';
+      return { href: '/documents', label: 'Documenti' };
     case 'WAREHOUSE':
     case 'WAREHOUSE_MOUNT':
-      return '/warehouse';
+      return { href: '/warehouse', label: 'Magazzino' };
     default:
-      return '/costs';
+      return { href: '/costs', label: 'Centro costi' };
   }
 }
+
+const scopeSummaryLabels: Record<CostScope, string> = {
+  all: 'Tutto: costi contabili, attribuzioni interne e impegni previsti',
+  accounting: 'Solo contabile',
+  internal: 'Solo attribuzioni interne',
+  forecast: 'Solo impegni previsti'
+};
 
 export default async function CostsPage({ searchParams }: CostsPageProps) {
   await requireUser();
@@ -145,7 +153,7 @@ export default async function CostsPage({ searchParams }: CostsPageProps) {
     <>
       <PageHeader
         title="Centro costi"
-        description="Vista unica di costi, ricavi, margini e impegni: viaggi, rifornimenti, autostrade, leasing, fatture/DDT, manutenzioni e magazzino."
+        description="Vista unica di costi, ricavi, margini e impegni: viaggi, rifornimenti, pedaggi, leasing, fatture e DDT, manutenzioni e magazzino."
         action={
           <div className="actions-row">
             <FilteredReportButton baseHref="/api/reports/costs" />
@@ -156,15 +164,15 @@ export default async function CostsPage({ searchParams }: CostsPageProps) {
               Rifornimenti
             </Link>
             <Link className="secondary-button" href="/tolls">
-              Autostrade
+              Pedaggi
             </Link>
             <Link className="secondary-button" href="/leases">
               <Landmark size={16} aria-hidden />
               Leasing
             </Link>
-            <Link className="primary-button" href="/maintenances/expenses/new">
+            <Link className="primary-button" href="/maintenances/new">
               <ReceiptText size={16} aria-hidden />
-              Nuova spesa
+              Inserisci nuova manutenzione
             </Link>
           </div>
         }
@@ -196,6 +204,11 @@ export default async function CostsPage({ searchParams }: CostsPageProps) {
           <strong>{rows.length}</strong>
         </div>
       </section>
+
+      <p className="muted" role="note">
+        Totali calcolati sulla vista <strong>{scopeSummaryLabels[scope]}</strong>. Cambiala nel filtro “Vista” per leggere solo
+        una parte dei movimenti.
+      </p>
 
       <form className="filter-bar fuel-filter-bar" action="/costs">
         <label className="fuel-filter-search">
@@ -282,25 +295,29 @@ export default async function CostsPage({ searchParams }: CostsPageProps) {
                   </td>
                 </tr>
               ) : (
-                sourceSummaries.map((summary) => (
-                  <tr key={summary.key}>
-                    <td>
-                      <strong>{summary.label}</strong>
-                    </td>
-                    <td>{summary.count}</td>
-                    <td>{formatCostMoney(summary.costGrossCents)}</td>
-                    <td>{formatCostMoney(summary.revenueGrossCents)}</td>
-                    <td>{formatCostMoney(summary.marginGrossCents)}</td>
-                    <td>{formatCostMoney(summary.internalGrossCents)}</td>
-                    <td>{formatCostMoney(summary.forecastGrossCents)}</td>
-                    <td>
-                      <Link className="table-cell-link" href={sourceHref(summary.key as CostSource)}>
-                        Apri sezione
-                        <ArrowRight size={14} aria-hidden />
-                      </Link>
-                    </td>
-                  </tr>
-                ))
+                sourceSummaries.map((summary) => {
+                  const destination = sourceDestination(summary.key as CostSource);
+
+                  return (
+                    <tr key={summary.key}>
+                      <td>
+                        <strong>{summary.label}</strong>
+                      </td>
+                      <td>{summary.count}</td>
+                      <td>{formatCostMoney(summary.costGrossCents)}</td>
+                      <td>{formatCostMoney(summary.revenueGrossCents)}</td>
+                      <td>{formatCostMoney(summary.marginGrossCents)}</td>
+                      <td>{formatCostMoney(summary.internalGrossCents)}</td>
+                      <td>{formatCostMoney(summary.forecastGrossCents)}</td>
+                      <td>
+                        <Link className="table-cell-link" href={destination.href}>
+                          Apri {destination.label}
+                          <ArrowRight size={14} aria-hidden />
+                        </Link>
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>
