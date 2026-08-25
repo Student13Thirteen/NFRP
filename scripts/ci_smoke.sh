@@ -63,6 +63,7 @@ printf '%s\n' \
   'FlowReady CI' \
   'Verified Operations Platform' \
   'admin@example.com' \
+  'Demo-only-Admin-Password-2026!' \
   '#2457d6' \
   '#183c9e' \
   '#152033' \
@@ -113,6 +114,7 @@ ANON_CODE="$(curl -sS -o /dev/null -w '%{http_code}' "$BASE_URL/dashboard")"
 [[ "$ANON_CODE" =~ ^(302|303|307|308)$ ]]
 
 python3 scripts/smoke-login.py "$BASE_URL" "$ADMIN_EMAIL" "$ADMIN_PASSWORD"
+docker compose exec -T app npx tsx scripts/verify-protected-workflows.ts
 
 [[ -z "$(docker compose ps -q cloudflared)" ]]
 
