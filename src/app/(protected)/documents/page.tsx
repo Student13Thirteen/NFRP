@@ -93,6 +93,7 @@ export default async function DocumentsPage({ searchParams }: DocumentsPageProps
         documentTypes={documentTypeOptions}
         entityOptions={entityOptions}
         initialFilters={resolvedSearchParams}
+        pageSize={resolvedSearchParams.pageSize}
         resultCount={filteredDocuments.length}
       />
       <DocumentTable documents={pagination.items} />

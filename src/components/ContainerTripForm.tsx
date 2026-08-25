@@ -3,6 +3,7 @@ import { Save } from 'lucide-react';
 import { ContainerRows, ContainerStopRows, type ContainerRowValue, type ContainerStopRowValue } from '@/components/ContainerTripRows';
 import { DatePartsInput } from '@/components/DatePartsInput';
 import { RecoverableForm } from '@/components/RecoverableForm';
+import { VehicleOwnerField, type VehicleOwnerOptionView } from '@/components/VehicleOwnerField';
 import { getContainerTripStatusLabel, getTripBillingStatusLabel } from '@/lib/container-trips';
 import type { TripSelectOption } from '@/lib/trips';
 
@@ -20,6 +21,10 @@ export type ContainerTripFormValues = {
   driverId?: string | null;
   tractorId?: string | null;
   trailerId?: string | null;
+  externalTractorPlate?: string | null;
+  externalTractorOwnerId?: string | null;
+  externalTrailerPlate?: string | null;
+  externalTrailerOwnerId?: string | null;
   loadingTerminalName?: string | null;
   deliveryTerminalName?: string | null;
   booking?: string | null;
@@ -48,6 +53,7 @@ type Props = {
   tractors: TripSelectOption[];
   trailers: TripSelectOption[];
   customers: TripSelectOption[];
+  vehicleOwners: VehicleOwnerOptionView[];
   defaultValues?: ContainerTripFormValues;
   showStatus?: boolean;
   submitLabel: string;
@@ -67,12 +73,14 @@ export function ContainerTripForm({
   tractors,
   trailers,
   customers,
+  vehicleOwners,
   defaultValues,
   showStatus = false,
   submitLabel,
   recoverOnError = false,
   recoveryKey = 'container-trip'
 }: Props) {
+  const hasExternalVehicle = Boolean(defaultValues?.externalTractorPlate || defaultValues?.externalTrailerPlate);
   const draftStatuses: ContainerTripStatus[] = [
     ContainerTripStatus.PLANNED,
     ContainerTripStatus.IN_PROGRESS,
@@ -145,6 +153,50 @@ export function ContainerTripForm({
           <input name="carrierName" defaultValue={defaultValues?.carrierName || ''} />
         </label>
       </div>
+
+      <details className="external-vehicle-block" open={hasExternalVehicle}>
+        <summary>Mezzi non aziendali (facoltativo)</summary>
+        <p className="muted">
+          Per un viaggio fatto con targhe di terzi scrivi qui la targa e il proprietario: il mezzo non entra in flotta e
+          non genera scadenze. Compila la targa esterna solo se sopra hai lasciato &quot;Non assegnato&quot;.
+        </p>
+        <div className="form-grid">
+          <label>
+            Targa trattore non nostro
+            <input
+              name="externalTractorPlate"
+              defaultValue={defaultValues?.externalTractorPlate || ''}
+              placeholder="Es. AB123CD"
+              maxLength={20}
+            />
+          </label>
+          <VehicleOwnerField
+            options={vehicleOwners}
+            idFieldName="externalTractorOwnerId"
+            nameFieldName="externalTractorOwnerName"
+            defaultOwnerId={defaultValues?.externalTractorOwnerId}
+            label="Proprietario del trattore"
+            hint="Serve solo se hai indicato una targa trattore non aziendale."
+          />
+          <label>
+            Targa semirimorchio non nostro
+            <input
+              name="externalTrailerPlate"
+              defaultValue={defaultValues?.externalTrailerPlate || ''}
+              placeholder="Es. XA123AB"
+              maxLength={20}
+            />
+          </label>
+          <VehicleOwnerField
+            options={vehicleOwners}
+            idFieldName="externalTrailerOwnerId"
+            nameFieldName="externalTrailerOwnerName"
+            defaultOwnerId={defaultValues?.externalTrailerOwnerId}
+            label="Proprietario del semirimorchio"
+            hint="Serve solo se hai indicato una targa semirimorchio non aziendale."
+          />
+        </div>
+      </details>
 
       <div className="form-section-title">Container</div>
       <ContainerRows defaultRows={defaultValues?.containers} />

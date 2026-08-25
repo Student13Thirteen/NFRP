@@ -176,11 +176,85 @@ enum VehicleLifecycleStatus {
   SCRAPPED
 }
 
+/// Tipologia dei mezzi a motore in flotta. Resta nullable: i mezzi gia presenti
+/// prima della classificazione restano "Da classificare" invece di ricevere un
+/// valore dedotto e non verificato.
+enum MotorVehicleType {
+  TRACTOR_UNIT
+  RIGID_TRUCK
+  VAN
+  TRUCK
+  CAR
+}
+
+/// Allestimento del semirimorchio. Nullable per lo stesso motivo.
+enum TrailerBodyType {
+  CONTAINER
+  TANK
+  REEFER
+}
+
+/// Carico trasportato dalle cisterne. Valorizzabile solo quando l'allestimento
+/// e TANK: il vincolo e applicato anche a livello di database.
+enum TankCargoType {
+  FUEL
+  LPG
+}
+
 enum DriverEmploymentEndReason {
   RESIGNATION
   DISMISSAL
   PROBATION_FAILED
   CONTRACT_ENDED
+  OTHER
+}
+
+enum RoadFineStatus {
+  TO_REVIEW
+  TO_PAY
+  CONTESTED
+  PAID
+  CANCELLED
+  CLOSED
+}
+
+enum RoadFineResponsibility {
+  TO_ASSESS
+  COMPANY
+  DRIVER
+}
+
+enum RoadAccidentStatus {
+  REPORTED
+  DOCUMENTS_PENDING
+  CLAIM_OPEN
+  ASSESSMENT
+  REPAIR
+  SETTLEMENT_PENDING
+  CLOSED
+  CANCELLED
+}
+
+enum RoadAccidentResponsibility {
+  TO_ASSESS
+  COMPANY
+  THIRD_PARTY
+  SHARED
+  NOT_APPLICABLE
+}
+
+enum RoadEventAttachmentKind {
+  NOTICE
+  NOTIFICATION
+  PAYMENT_RECEIPT
+  APPEAL
+  CAI
+  PHOTO
+  POLICE_REPORT
+  ESTIMATE
+  APPRAISAL
+  INVOICE
+  INSURER_COMMUNICATION
   OTHER
 }
 
@@ -210,8 +284,10 @@ model Driver {
   tripImportRows                TripImportRow[]
   maintenances                  Maintenance[]
   fuelEntries                   FuelEntry[]
-  employmentPeriods             DriverEmploymentPeriod[]
   expenseLineAllocations        ExpenseLineAllocation[]
+  employmentPeriods             DriverEmploymentPeriod[]
+  roadFines                     RoadFine[]
+  roadAccidents                 RoadAccident[]
   createdAt                     DateTime                       @default(now())
   updatedAt                     DateTime                       @updatedAt
 
@@ -235,6 +311,7 @@ model DriverEmploymentPeriod {
 model Tractor {
   id                            String                         @id @default(cuid())
   plate                         String                         @unique
+  vehicleType                   MotorVehicleType?
   brand                         String?
   model                         String?
   notes                         String?
@@ -259,24 +336,27 @@ model Tractor {
   expenseLineAllocations        ExpenseLineAllocation[]
   leaseContracts                LeaseContract[]
   warehouseMovements            WarehouseMovement[]
+  roadFines                     RoadFine[]
+  roadAccidents                 RoadAccident[]
   createdAt                     DateTime                       @default(now())
   updatedAt                     DateTime                       @updatedAt
 
   @@index([assignedDriverId])
   @@index([lifecycleStatus])
+  @@index([vehicleType])
 }
 
 model TractorDriverAssignment {
-  id        String   @id @default(cuid())
+  id        String    @id @default(cuid())
   tractorId String
-  tractor   Tractor  @relation(fields: [tractorId], references: [id], onDelete: Cascade)
+  tractor   Tractor   @relation(fields: [tractorId], references: [id], onDelete: Cascade)
   driverId  String
-  driver    Driver   @relation(fields: [driverId], references: [id], onDelete: Restrict)
-  validFrom DateTime @db.Date
+  driver    Driver    @relation(fields: [driverId], references: [id], onDelete: Restrict)
+  validFrom DateTime  @db.Date
   validTo   DateTime? @db.Date
   notes     String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
 
   @@index([tractorId, validFrom, validTo])
   @@index([driverId, validFrom, validTo])
@@ -285,6 +365,8 @@ model TractorDriverAssignment {
 model Trailer {
   id                            String                         @id @default(cuid())
   plate                         String                         @unique
+  bodyType                      TrailerBodyType?
+  tankCargo                     TankCargoType?
   brand                         String?
   model                         String?
   notes                         String?
@@ -303,11 +385,14 @@ model Trailer {
   expenseLineAllocations        ExpenseLineAllocation[]
   leaseContracts                LeaseContract[]
   warehouseMovements            WarehouseMovement[]
+  roadFines                     RoadFine[]
+  roadAccidents                 RoadAccident[]
   createdAt                     DateTime                       @default(now())
   updatedAt                     DateTime                       @updatedAt
 
   @@index([assignedTractorId])
   @@index([lifecycleStatus])
+  @@index([bodyType])
 }
 
 model OtherEntity {
@@ -652,6 +737,12 @@ model ContainerTrip {
   tractor                 Tractor?                 @relation(fields: [tractorId], references: [id], onDelete: SetNull)
   trailerId               String?
   trailer                 Trailer?                 @relation(fields: [trailerId], references: [id], onDelete: SetNull)
+  externalTractorPlate    String?
+  externalTractorOwnerId  String?
+  externalTractorOwner    VehicleOwner?            @relation("ContainerTripExternalTractorOwner", fields: [externalTractorOwnerId], references: [id], onDelete: SetNull)
+  externalTrailerPlate    String?
+  externalTrailerOwnerId  String?
+  externalTrailerOwner    VehicleOwner?            @relation("ContainerTripExternalTrailerOwner", fields: [externalTrailerOwnerId], references: [id], onDelete: SetNull)
   loadingTerminalName     String?
   deliveryTerminalName    String?
   booking                 String?
@@ -933,6 +1024,24 @@ model Maintenance {
   @@index([trailerId])
 }
 
+/// Anagrafica dei proprietari di mezzi non aziendali: serve per completare i
+/// rifornimenti e i viaggi fatti con targhe di terzi senza inserirle in flotta.
+model VehicleOwner {
+  id                   String          @id @default(cuid())
+  name                 String          @unique
+  vatNumber            String?
+  phone                String?
+  notes                String?
+  active               Boolean         @default(true)
+  fuelEntries          FuelEntry[]
+  externalTractorTrips ContainerTrip[] @relation("ContainerTripExternalTractorOwner")
+  externalTrailerTrips ContainerTrip[] @relation("ContainerTripExternalTrailerOwner")
+  createdAt            DateTime        @default(now())
+  updatedAt            DateTime        @updatedAt
+
+  @@index([active, name])
+}
+
 model Supplier {
   id               String            @id @default(cuid())
   name             String            @unique
@@ -973,37 +1082,37 @@ model Category {
 }
 
 model WarehouseItem {
-  id                  String              @id @default(cuid())
-  title               String
-  status              WarehouseStatus     @default(IN_STOCK)
-  categoryId          String
-  category            Category            @relation(fields: [categoryId], references: [id], onDelete: Restrict)
-  stockedAt           DateTime
-  documentDate        DateTime?
-  supplierId          String?
-  supplier            Supplier?           @relation(fields: [supplierId], references: [id], onDelete: SetNull)
-  documentNumber      String?
-  code                String?
-  quantity            Int                 @default(1)
-  unit                String              @default("pz")
-  minimumQuantity     Int?
-  location            String?
-  amountCents         Int?
-  unitCostCents       Int?
-  vatRatePercent      Int?
-  description         String
-  notes               String?
-  filePath            String?
-  originalFileName    String?
-  fileSize            Int?
-  mimeType            String?
-  sourceExpenseLineId String?
-  migratedToExpense   Boolean             @default(false)
-  expenseLines        ExpenseLine[]
+  id                     String                  @id @default(cuid())
+  title                  String
+  status                 WarehouseStatus         @default(IN_STOCK)
+  categoryId             String
+  category               Category                @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  stockedAt              DateTime
+  documentDate           DateTime?
+  supplierId             String?
+  supplier               Supplier?               @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  documentNumber         String?
+  code                   String?
+  quantity               Int                     @default(1)
+  unit                   String                  @default("pz")
+  minimumQuantity        Int?
+  location               String?
+  amountCents            Int?
+  unitCostCents          Int?
+  vatRatePercent         Int?
+  description            String
+  notes                  String?
+  filePath               String?
+  originalFileName       String?
+  fileSize               Int?
+  mimeType               String?
+  sourceExpenseLineId    String?
+  migratedToExpense      Boolean                 @default(false)
+  expenseLines           ExpenseLine[]
   expenseLineAllocations ExpenseLineAllocation[]
-  movements           WarehouseMovement[]
-  createdAt           DateTime            @default(now())
-  updatedAt           DateTime            @updatedAt
+  movements              WarehouseMovement[]
+  createdAt              DateTime                @default(now())
+  updatedAt              DateTime                @updatedAt
 
   @@index([stockedAt])
   @@index([documentDate])
@@ -1115,6 +1224,9 @@ model FuelEntry {
   plate                       String
   tractorId                   String?
   tractor                     Tractor?         @relation(fields: [tractorId], references: [id], onDelete: SetNull)
+  externalVehicle             Boolean          @default(false)
+  vehicleOwnerId              String?
+  vehicleOwner                VehicleOwner?    @relation(fields: [vehicleOwnerId], references: [id], onDelete: SetNull)
   driverId                    String?
   driver                      Driver?          @relation(fields: [driverId], references: [id], onDelete: SetNull)
   odometerKm                  Int?
@@ -1149,6 +1261,7 @@ model FuelEntry {
   @@index([fuelProductId])
   @@index([productCode])
   @@index([invoiceNumber])
+  @@index([vehicleOwnerId])
   @@index([importBatchId])
 }
 
@@ -1271,6 +1384,8 @@ model ExpenseDocument {
   supplierName         String?
   leaseContractId      String?
   leaseContract        LeaseContract?        @relation(fields: [leaseContractId], references: [id], onDelete: SetNull)
+  roadAccidentId       String?
+  roadAccident         RoadAccident?          @relation(fields: [roadAccidentId], references: [id], onDelete: SetNull)
   documentNumber       String?
   documentDate         DateTime?
   registeredAt         DateTime
@@ -1292,39 +1407,168 @@ model ExpenseDocument {
   @@index([registeredAt])
   @@index([supplierId])
   @@index([leaseContractId])
+  @@index([roadAccidentId])
   @@index([source, createdAt])
   @@index([createdAt])
 }
 
+model RoadFine {
+  id                       String                  @id @default(cuid())
+  status                   RoadFineStatus          @default(TO_REVIEW)
+  responsibility           RoadFineResponsibility  @default(TO_ASSESS)
+  noticeNumber             String?
+  authority                String
+  violationDate            DateTime                @db.Date
+  violationTime            String?
+  notificationDate         DateTime?               @db.Date
+  location                 String
+  violationCode            String?
+  description              String
+  tractorId                String?
+  tractor                  Tractor?                @relation(fields: [tractorId], references: [id], onDelete: SetNull)
+  trailerId                String?
+  trailer                  Trailer?                @relation(fields: [trailerId], references: [id], onDelete: SetNull)
+  driverId                 String?
+  driver                   Driver?                 @relation(fields: [driverId], references: [id], onDelete: SetNull)
+  pointsDeducted           Int?
+  reducedAmountCents       Int?
+  standardAmountCents      Int?
+  discountedPaymentDueDate DateTime?               @db.Date
+  paymentDueDate           DateTime?               @db.Date
+  appealDueDate            DateTime?               @db.Date
+  paidAmountCents          Int?
+  paymentDate              DateTime?               @db.Date
+  paymentReference         String?
+  driverChargeCents        Int?
+  notes                    String?
+  attachments              RoadEventAttachment[]   @relation("RoadFineAttachments")
+  revisions                RoadFineRevision[]
+  createdAt                DateTime                 @default(now())
+  updatedAt                DateTime                 @updatedAt
+
+  @@index([status, paymentDueDate])
+  @@index([violationDate])
+  @@index([tractorId])
+  @@index([trailerId])
+  @@index([driverId])
+}
+
+model RoadFineRevision {
+  id        String   @id @default(cuid())
+  fineId    String
+  fine      RoadFine @relation(fields: [fineId], references: [id], onDelete: Cascade)
+  event     String
+  summary   String
+  createdAt DateTime @default(now())
+
+  @@index([fineId, createdAt])
+}
+
+model RoadAccident {
+  id                         String                       @id @default(cuid())
+  status                     RoadAccidentStatus           @default(REPORTED)
+  responsibility             RoadAccidentResponsibility   @default(TO_ASSESS)
+  accidentDate               DateTime                     @db.Date
+  accidentTime               String?
+  location                   String
+  description                String
+  tractorId                  String?
+  tractor                    Tractor?                     @relation(fields: [tractorId], references: [id], onDelete: SetNull)
+  trailerId                  String?
+  trailer                    Trailer?                     @relation(fields: [trailerId], references: [id], onDelete: SetNull)
+  driverId                   String?
+  driver                     Driver?                      @relation(fields: [driverId], references: [id], onDelete: SetNull)
+  thirdPartyDetails          String?
+  witnesses                  String?
+  authorityDetails           String?
+  hasInjuries                Boolean                      @default(false)
+  cargoInvolved              Boolean                      @default(false)
+  vehicleImmobilized         Boolean                      @default(false)
+  towRequired                Boolean                      @default(false)
+  insurerName                String?
+  policyNumber               String?
+  claimNumber                String?
+  reportedDate               DateTime?                    @db.Date
+  nextDeadline               DateTime?                    @db.Date
+  closedDate                 DateTime?                    @db.Date
+  estimatedDamageCents       Int?
+  deductibleCents            Int?
+  directCostCents            Int?
+  directCostDate             DateTime?                    @db.Date
+  reimbursementCents         Int?
+  reimbursementDate          DateTime?                    @db.Date
+  notes                      String?
+  attachments                RoadEventAttachment[]        @relation("RoadAccidentAttachments")
+  revisions                  RoadAccidentRevision[]
+  expenseDocuments           ExpenseDocument[]
+  createdAt                  DateTime                      @default(now())
+  updatedAt                  DateTime                      @updatedAt
+
+  @@index([status, nextDeadline])
+  @@index([accidentDate])
+  @@index([tractorId])
+  @@index([trailerId])
+  @@index([driverId])
+  @@index([claimNumber])
+}
+
+model RoadAccidentRevision {
+  id         String       @id @default(cuid())
+  accidentId String
+  accident   RoadAccident @relation(fields: [accidentId], references: [id], onDelete: Cascade)
+  event      String
+  summary    String
+  createdAt  DateTime     @default(now())
+
+  @@index([accidentId, createdAt])
+}
+
+model RoadEventAttachment {
+  id               String                  @id @default(cuid())
+  fineId           String?
+  fine             RoadFine?               @relation("RoadFineAttachments", fields: [fineId], references: [id], onDelete: Cascade)
+  accidentId       String?
+  accident         RoadAccident?           @relation("RoadAccidentAttachments", fields: [accidentId], references: [id], onDelete: Cascade)
+  kind             RoadEventAttachmentKind @default(OTHER)
+  filePath         String
+  originalFileName String
+  fileSize         Int
+  mimeType         String
+  createdAt        DateTime                @default(now())
+
+  @@index([fineId, createdAt])
+  @@index([accidentId, createdAt])
+}
+
 model ExpenseLine {
-  id              String                @id @default(cuid())
-  documentId      String
-  document        ExpenseDocument       @relation(fields: [documentId], references: [id], onDelete: Cascade)
-  position        Int                   @default(0)
-  code            String?
-  description     String
-  quantityMilli   Int                   @default(1000)
-  unit            String                @default("pz")
-  unitPriceCents  Int                   @default(0)
-  unitPriceMilliEuro Int                @default(0)
-  imponibileCents Int                   @default(0)
-  vatRatePercent  Int                   @default(22)
-  vatCents        Int                   @default(0)
-  totalCents      Int                   @default(0)
-  categoryId      String?
-  category        Category?             @relation(fields: [categoryId], references: [id], onDelete: SetNull)
-  allocationType  ExpenseAllocationType @default(GENERIC)
-  tractorId       String?
-  tractor         Tractor?              @relation(fields: [tractorId], references: [id], onDelete: SetNull)
-  trailerId       String?
-  trailer         Trailer?              @relation(fields: [trailerId], references: [id], onDelete: SetNull)
-  warehouseItemId String?
-  warehouseItem   WarehouseItem?        @relation(fields: [warehouseItemId], references: [id], onDelete: SetNull)
-  odometerKm      Int?
-  notes           String?
-  allocations     ExpenseLineAllocation[]
-  createdAt       DateTime              @default(now())
-  updatedAt       DateTime              @updatedAt
+  id                 String                  @id @default(cuid())
+  documentId         String
+  document           ExpenseDocument         @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  position           Int                     @default(0)
+  code               String?
+  description        String
+  quantityMilli      Int                     @default(1000)
+  unit               String                  @default("pz")
+  unitPriceCents     Int                     @default(0)
+  unitPriceMilliEuro Int                     @default(0)
+  imponibileCents    Int                     @default(0)
+  vatRatePercent     Int                     @default(22)
+  vatCents           Int                     @default(0)
+  totalCents         Int                     @default(0)
+  categoryId         String?
+  category           Category?               @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  allocationType     ExpenseAllocationType   @default(GENERIC)
+  tractorId          String?
+  tractor            Tractor?                @relation(fields: [tractorId], references: [id], onDelete: SetNull)
+  trailerId          String?
+  trailer            Trailer?                @relation(fields: [trailerId], references: [id], onDelete: SetNull)
+  warehouseItemId    String?
+  warehouseItem      WarehouseItem?          @relation(fields: [warehouseItemId], references: [id], onDelete: SetNull)
+  odometerKm         Int?
+  notes              String?
+  allocations        ExpenseLineAllocation[]
+  createdAt          DateTime                @default(now())
+  updatedAt          DateTime                @updatedAt
 
   @@index([documentId, position])
   @@index([allocationType])

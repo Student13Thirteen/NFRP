@@ -90,6 +90,7 @@ export default async function DocumentsHistoryPage({ searchParams }: DocumentsHi
         documentTypes={documentTypeOptions}
         entityOptions={entityOptions}
         initialFilters={resolvedSearchParams}
+        pageSize={resolvedSearchParams.pageSize}
         resultCount={filteredDocuments.length}
         statusOptions={historyStatusOptions}
       />

@@ -42,7 +42,7 @@ export default async function FuelDetailPage({ params, searchParams }: FuelDetai
   });
   if (!entry) notFound();
 
-  const [tractors, drivers, suppliers, cards, products, driverAssignments] = await Promise.all([
+  const [tractors, drivers, suppliers, cards, products, driverAssignments, vehicleOwners] = await Promise.all([
     prisma.tractor.findMany({ orderBy: [{ active: 'desc' }, { plate: 'asc' }] }),
     prisma.driver.findMany({ orderBy: [{ active: 'desc' }, { lastName: 'asc' }, { firstName: 'asc' }] }),
     prisma.fuelSupplier.findMany({ orderBy: [{ active: 'desc' }, { name: 'asc' }] }),
@@ -54,6 +54,10 @@ export default async function FuelDetailPage({ params, searchParams }: FuelDetai
     prisma.tractorDriverAssignment.findMany({
       include: { driver: { select: { firstName: true, lastName: true } } },
       orderBy: { validFrom: 'desc' }
+    }),
+    prisma.vehicleOwner.findMany({
+      select: { id: true, name: true, active: true },
+      orderBy: [{ active: 'desc' }, { name: 'asc' }]
     })
   ]);
 
@@ -119,8 +123,17 @@ export default async function FuelDetailPage({ params, searchParams }: FuelDetai
             </div>
             <div>
               <dt>Targa</dt>
-              <dd>{getFuelVehicleLabel(entry)}</dd>
+              <dd>
+                {getFuelVehicleLabel(entry)}
+                {entry.externalVehicle ? <div><span className="badge external-vehicle-badge">Mezzo non aziendale</span></div> : null}
+              </dd>
             </div>
+            {entry.externalVehicle ? (
+              <div>
+                <dt>Proprietario</dt>
+                <dd>{entry.vehicleOwner?.name || 'Non indicato'}</dd>
+              </div>
+            ) : null}
             <div>
               <dt>Autista</dt>
               <dd>{getFuelDriverLabel(entry)}</dd>
@@ -188,6 +201,7 @@ export default async function FuelDetailPage({ params, searchParams }: FuelDetai
             suppliers={suppliers}
             cards={cards}
             products={products}
+            vehicleOwners={vehicleOwners}
             driverAssignments={driverAssignments.map((assignment) => ({
               ...assignment,
               validFrom: toDateInputValue(assignment.validFrom),
@@ -198,6 +212,9 @@ export default async function FuelDetailPage({ params, searchParams }: FuelDetai
               fuelDate: toDateInputValue(entry.fuelDate),
               fuelTime: entry.fuelTime,
               tractorId: entry.tractorId,
+              externalVehicle: entry.externalVehicle,
+              externalPlate: entry.externalVehicle ? entry.plate : null,
+              vehicleOwnerId: entry.vehicleOwnerId,
               driverId: entry.driverId,
               fuelSupplierId: entry.fuelSupplierId,
               fuelCardId: entry.fuelCardId,

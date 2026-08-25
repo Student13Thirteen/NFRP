@@ -8,7 +8,8 @@ import {
 } from '@prisma/client';
 import { z } from 'zod';
 import { prisma } from '@/lib/db';
-import { formString, optionalFormString } from '@/lib/form';
+import { formString, normalizePlate, optionalFormString } from '@/lib/form';
+import { resolveVehicleOwnerIdFromForm } from '@/lib/vehicle-owners';
 import { getContainerTripClosureIssues } from '@/lib/container-trips';
 
 const stopKinds = ['PICKUP', 'DELIVERY', 'TERMINAL', 'CUSTOMS', 'OTHER'] as const;
@@ -27,6 +28,10 @@ const containerTripSchema = z.object({
   driverId: z.string().nullable(),
   tractorId: z.string().nullable(),
   trailerId: z.string().nullable(),
+  externalTractorPlate: z.string().max(20).nullable(),
+  externalTractorOwnerId: z.string().nullable(),
+  externalTrailerPlate: z.string().max(20).nullable(),
+  externalTrailerOwnerId: z.string().nullable(),
   loadingTerminalName: z.string().max(180).nullable(),
   deliveryTerminalName: z.string().max(180).nullable(),
   booking: z.string().max(100).nullable(),
@@ -156,6 +161,8 @@ async function assertReferences(input: z.infer<typeof containerTripSchema>) {
 }
 
 export async function parseContainerTripForm(formData: FormData) {
+  const externalTractorPlate = normalizePlate(optionalFormString(formData, 'externalTractorPlate') || '') || null;
+  const externalTrailerPlate = normalizePlate(optionalFormString(formData, 'externalTrailerPlate') || '') || null;
   const parsed = containerTripSchema.parse({
     tripDate: parseDate(formString(formData, 'tripDate'), 'Data viaggio'),
     status: formString(formData, 'status') || ContainerTripStatus.PLANNED,
@@ -170,6 +177,22 @@ export async function parseContainerTripForm(formData: FormData) {
     driverId: optionalFormString(formData, 'driverId'),
     tractorId: optionalFormString(formData, 'tractorId'),
     trailerId: optionalFormString(formData, 'trailerId'),
+    // Mezzi di terzi: targa scritta a mano, proprietario scelto o creato al volo.
+    // Non entrano in flotta e non creano anagrafiche mezzo.
+    externalTractorPlate: externalTractorPlate,
+    externalTractorOwnerId: externalTractorPlate
+      ? await resolveVehicleOwnerIdFromForm(formData, {
+          idField: 'externalTractorOwnerId',
+          nameField: 'externalTractorOwnerName'
+        })
+      : null,
+    externalTrailerPlate: externalTrailerPlate,
+    externalTrailerOwnerId: externalTrailerPlate
+      ? await resolveVehicleOwnerIdFromForm(formData, {
+          idField: 'externalTrailerOwnerId',
+          nameField: 'externalTrailerOwnerName'
+        })
+      : null,
     loadingTerminalName: optionalFormString(formData, 'loadingTerminalName'),
     deliveryTerminalName: optionalFormString(formData, 'deliveryTerminalName'),
     booking: optionalFormString(formData, 'booking'),
@@ -194,6 +217,12 @@ export async function parseContainerTripForm(formData: FormData) {
 
   if (!parsed.customerId && !parsed.customerCode && !parsed.customerName) {
     throw new Error('Seleziona un cliente oppure inserisci almeno codice o nome del committente.');
+  }
+  if (parsed.tractorId && parsed.externalTractorPlate) {
+    throw new Error('Per il trattore scegli il mezzo della flotta oppure la targa non aziendale, non entrambi.');
+  }
+  if (parsed.trailerId && parsed.externalTrailerPlate) {
+    throw new Error('Per il semirimorchio scegli il mezzo della flotta oppure la targa non aziendale, non entrambi.');
   }
   if (parsed.odometerStartKm !== null && parsed.odometerEndKm !== null) {
     if (parsed.odometerEndKm < parsed.odometerStartKm) throw new Error('Il contachilometri finale non puo essere inferiore a quello iniziale.');

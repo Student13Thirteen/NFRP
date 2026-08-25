@@ -22,12 +22,13 @@ import {
   getContainerTripExtraStatusLabel,
   getContainerTripMarginCents,
   getContainerTripStatusLabel,
+  getContainerTripVehicleLabel,
   getTripBillingStatusLabel,
   isContainerTripClosedForCosts
 } from '@/lib/container-trips';
 import { formatDate, toDateInputValue } from '@/lib/dates';
 import { prisma } from '@/lib/db';
-import { buildCustomerOptions, buildDriverOptions, buildTractorOptions, buildTrailerOptions, getDriverLabel, getVehicleLabel } from '@/lib/trips';
+import { buildCustomerOptions, buildDriverOptions, buildTractorOptions, buildTrailerOptions, getDriverLabel } from '@/lib/trips';
 import {
   closeContainerTripAction,
   createContainerExtraAction,
@@ -49,13 +50,17 @@ export default async function ContainerTripDetailPage({ params, searchParams }: 
   await requireUser();
   const { id } = await params;
   const query = await searchParams;
-  const [trip, drivers, tractors, trailers, tariffs, customers] = await Promise.all([
+  const [trip, drivers, tractors, trailers, tariffs, customers, vehicleOwners] = await Promise.all([
     prisma.containerTrip.findUnique({ where: { id }, include: containerTripInclude }),
     prisma.driver.findMany({ orderBy: [{ active: 'desc' }, { lastName: 'asc' }, { firstName: 'asc' }] }),
     prisma.tractor.findMany({ orderBy: [{ active: 'desc' }, { plate: 'asc' }] }),
     prisma.trailer.findMany({ orderBy: [{ active: 'desc' }, { plate: 'asc' }] }),
     prisma.containerExtraTariff.findMany({ where: { active: true }, orderBy: [{ kind: 'asc' }, { name: 'asc' }] }),
-    prisma.customer.findMany({ orderBy: [{ active: 'desc' }, { name: 'asc' }] })
+    prisma.customer.findMany({ orderBy: [{ active: 'desc' }, { name: 'asc' }] }),
+    prisma.vehicleOwner.findMany({
+      select: { id: true, name: true, active: true },
+      orderBy: [{ active: 'desc' }, { name: 'asc' }]
+    })
   ]);
   if (!trip) notFound();
 
@@ -149,7 +154,25 @@ export default async function ContainerTripDetailPage({ params, searchParams }: 
           <div><dt>PIN / codici</dt><dd>{[trip.pickupCode, trip.deliveryCode].filter(Boolean).join(' · ') || '-'}</dd></div>
           <div><dt>Transitario</dt><dd>{trip.forwarder || '-'}</dd></div>
           <div><dt>Autista</dt><dd>{getDriverLabel(trip.driver)}</dd></div>
-          <div><dt>Trattore / semirimorchio</dt><dd>{getVehicleLabel(trip.tractor)} · {getVehicleLabel(trip.trailer)}</dd></div>
+          <div>
+            <dt>Trattore / semirimorchio</dt>
+            <dd>
+              {getContainerTripVehicleLabel({
+                vehicle: trip.tractor,
+                externalPlate: trip.externalTractorPlate,
+                externalOwnerName: trip.externalTractorOwner?.name || null
+              })}
+              {' · '}
+              {getContainerTripVehicleLabel({
+                vehicle: trip.trailer,
+                externalPlate: trip.externalTrailerPlate,
+                externalOwnerName: trip.externalTrailerOwner?.name || null
+              })}
+              {trip.externalTractorPlate || trip.externalTrailerPlate ? (
+                <div><span className="badge external-vehicle-badge">Viaggio con mezzo non aziendale</span></div>
+              ) : null}
+            </dd>
+          </div>
           <div><dt>Stato</dt><dd>{getContainerTripStatusLabel(trip.status)}</dd></div>
           <div><dt>Fatturazione</dt><dd>{getTripBillingStatusLabel(trip.billingStatus)}</dd></div>
         </dl>
@@ -185,6 +208,7 @@ export default async function ContainerTripDetailPage({ params, searchParams }: 
           tractors={buildTractorOptions(tractors)}
           trailers={buildTrailerOptions(trailers)}
           customers={buildCustomerOptions(customers)}
+          vehicleOwners={vehicleOwners}
           showStatus
           submitLabel="Salva dati viaggio"
           defaultValues={{
@@ -201,6 +225,10 @@ export default async function ContainerTripDetailPage({ params, searchParams }: 
             driverId: trip.driverId,
             tractorId: trip.tractorId,
             trailerId: trip.trailerId,
+            externalTractorPlate: trip.externalTractorPlate,
+            externalTractorOwnerId: trip.externalTractorOwnerId,
+            externalTrailerPlate: trip.externalTrailerPlate,
+            externalTrailerOwnerId: trip.externalTrailerOwnerId,
             loadingTerminalName: trip.loadingTerminalName,
             deliveryTerminalName: trip.deliveryTerminalName,
             booking: trip.booking,

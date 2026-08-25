@@ -102,6 +102,7 @@ export default async function DisposedDocumentsPage({ searchParams }: DisposedDo
         documentTypes={documentTypes.map((documentType) => ({ id: documentType.id, name: documentType.name }))}
         entityOptions={entityOptions}
         initialFilters={resolvedSearchParams}
+        pageSize={resolvedSearchParams.pageSize}
         resultCount={filteredDocuments.length}
         statusOptions={statusOptions}
         vehicleStatusOptions={vehicleStatusOptions}

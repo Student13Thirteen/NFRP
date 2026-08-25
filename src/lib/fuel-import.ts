@@ -5,7 +5,8 @@ import pdfParse from 'pdf-parse/lib/pdf-parse.js';
 import { FuelEntryStatus, Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { getDatedDriverMap, getDriverIdForTractorAtDate } from '@/lib/driver-assignments';
-import { optionalFormString } from '@/lib/form';
+import { normalizePlate, optionalFormString } from '@/lib/form';
+import { resolveVehicleOwnerIdFromForm } from '@/lib/vehicle-owners';
 import { readStoredPdf, removeStoredPdf, storePdfBuffer, storePdfFile, type StoredPdf } from '@/lib/files';
 import {
   getFuelProductName,
@@ -126,7 +127,7 @@ async function getTractorAssignments(tx: PrismaClientOrTx, plates: string[]) {
 // Le targhe dei tabulati FuelCo sono trattori della flotta: quelle non ancora in
 // anagrafica vengono create al volo come trattori minimali (solo targa), cosi'
 // il rifornimento si collega subito e l'utente puo' completare marca, modello e
-// autista dal menu Trattori. Restituisce le targhe effettivamente create.
+// autista dal menu Mezzi a motore. Restituisce le targhe effettivamente create.
 async function ensureMissingTractors(
   tx: PrismaClientOrTx,
   plates: string[],
@@ -445,6 +446,7 @@ export async function recalculateFuelMetricsForPlates(tx: PrismaClientOrTx, plat
       volumeLitersMilli: true,
       totalAmountCents: true,
       manuallyVerified: true,
+      externalVehicle: true,
       status: true,
       fuelProduct: { select: { isFuel: true } }
     }
@@ -904,19 +906,52 @@ async function getFuelSupplierAndCardFromForm(formData: FormData) {
   };
 }
 
-async function getTractorAndDriverFromForm(formData: FormData, fuelDate: Date) {
+/**
+ * Mezzo del rifornimento manuale. Oltre alla targa in flotta l'operatore puo
+ * dichiarare un mezzo non aziendale scrivendone la targa: capita di rifornire
+ * un mezzo di terzi e il costo va comunque registrato. Se la targa scritta
+ * corrisponde pero' a un mezzo gia in anagrafica viene collegata a quello, cosi'
+ * la catena km e i consumi di quella targa restano una sola.
+ */
+async function getVehicleAndDriverFromForm(formData: FormData, fuelDate: Date) {
+  const externalVehicle = formData.get('externalVehicle') === 'on';
+
+  if (externalVehicle) {
+    const plate = normalizePlate(optionalFormString(formData, 'externalPlate') || '');
+    if (!plate) throw new Error('Targa del mezzo non aziendale obbligatoria.');
+
+    const knownTractor = await prisma.tractor.findFirst({
+      where: { plate: { equals: plate, mode: 'insensitive' } },
+      select: { id: true, plate: true }
+    });
+    const vehicleOwnerId = await resolveVehicleOwnerIdFromForm(formData, {
+      idField: 'vehicleOwnerId',
+      nameField: 'vehicleOwnerName'
+    });
+    const driverId = optionalFormString(formData, 'driverId')
+      || (knownTractor ? await getDriverIdForTractorAtDate(prisma, knownTractor.id, fuelDate) : null);
+    await assertDriver(driverId);
+
+    return {
+      tractor: knownTractor || { id: null, plate },
+      driverId,
+      externalVehicle: !knownTractor,
+      vehicleOwnerId
+    };
+  }
+
   const tractorId = optionalFormString(formData, 'tractorId');
-  if (!tractorId) throw new Error('Targa trattore obbligatoria.');
+  if (!tractorId) throw new Error('Targa del mezzo obbligatoria.');
 
   const tractor = await prisma.tractor.findUnique({
     where: { id: tractorId },
     select: { id: true, plate: true }
   });
-  if (!tractor) throw new Error('Targa trattore non valida.');
+  if (!tractor) throw new Error('Targa del mezzo non valida.');
 
   const driverId = optionalFormString(formData, 'driverId') || await getDriverIdForTractorAtDate(prisma, tractor.id, fuelDate);
   await assertDriver(driverId);
-  return { tractor, driverId };
+  return { tractor, driverId, externalVehicle: false, vehicleOwnerId: null as string | null };
 }
 
 function getRecordCardNumber(formData: FormData, fuelCard: { cardNumber: string } | null): string {
@@ -929,8 +964,10 @@ function getRecordTicketNumber(formData: FormData): string {
 
 function buildFuelEntryWriteData(input: {
   formData: FormData;
-  tractor: { id: string; plate: string };
+  tractor: { id: string | null; plate: string };
   driverId: string | null;
+  externalVehicle: boolean;
+  vehicleOwnerId: string | null;
   product: { id: string; code: string; name: string };
   fuelSupplier: { id: string; name: string } | null;
   fuelCard: { id: string; cardNumber: string } | null;
@@ -954,6 +991,8 @@ function buildFuelEntryWriteData(input: {
     productName: input.product.name,
     plate: compactPlate(input.tractor.plate),
     tractorId: input.tractor.id,
+    externalVehicle: input.externalVehicle,
+    vehicleOwnerId: input.vehicleOwnerId,
     driverId: input.driverId,
     odometerKm: parseOptionalOdometer(input.formData),
     stationName: optionalFormString(input.formData, 'stationName'),
@@ -970,8 +1009,8 @@ function buildFuelEntryWriteData(input: {
 
 export async function updateFuelEntryFromForm(id: string, formData: FormData) {
   const fuelDate = parseManualDate(String(formData.get('fuelDate') || ''));
-  const [{ tractor, driverId }, product, { fuelSupplier, fuelCard }] = await Promise.all([
-    getTractorAndDriverFromForm(formData, fuelDate),
+  const [{ tractor, driverId, externalVehicle, vehicleOwnerId }, product, { fuelSupplier, fuelCard }] = await Promise.all([
+    getVehicleAndDriverFromForm(formData, fuelDate),
     getFuelProductFromForm(formData),
     getFuelSupplierAndCardFromForm(formData)
   ]);
@@ -982,7 +1021,17 @@ export async function updateFuelEntryFromForm(id: string, formData: FormData) {
 
     await tx.fuelEntry.update({
       where: { id },
-      data: buildFuelEntryWriteData({ formData, tractor, driverId, product, fuelSupplier, fuelCard, fuelDate })
+      data: buildFuelEntryWriteData({
+        formData,
+        tractor,
+        driverId,
+        externalVehicle,
+        vehicleOwnerId,
+        product,
+        fuelSupplier,
+        fuelCard,
+        fuelDate
+      })
     });
 
     await recalculateFuelMetricsForPlates(tx, [entry.plate, tractor.plate]);
@@ -992,12 +1041,22 @@ export async function updateFuelEntryFromForm(id: string, formData: FormData) {
 
 export async function createManualFuelEntryFromForm(formData: FormData) {
   const fuelDate = parseManualDate(String(formData.get('fuelDate') || ''));
-  const [{ tractor, driverId }, product, { fuelSupplier, fuelCard }] = await Promise.all([
-    getTractorAndDriverFromForm(formData, fuelDate),
+  const [{ tractor, driverId, externalVehicle, vehicleOwnerId }, product, { fuelSupplier, fuelCard }] = await Promise.all([
+    getVehicleAndDriverFromForm(formData, fuelDate),
     getFuelProductFromForm(formData),
     getFuelSupplierAndCardFromForm(formData)
   ]);
-  const writeData = buildFuelEntryWriteData({ formData, tractor, driverId, product, fuelSupplier, fuelCard, fuelDate });
+  const writeData = buildFuelEntryWriteData({
+    formData,
+    tractor,
+    driverId,
+    externalVehicle,
+    vehicleOwnerId,
+    product,
+    fuelSupplier,
+    fuelCard,
+    fuelDate
+  });
   const submittedKey = optionalFormString(formData, 'submissionKey');
   const submissionKey = submittedKey && /^[a-z0-9-]{16,80}$/i.test(submittedKey) ? submittedKey : randomUUID();
   const payloadDigest = createHash('sha256').update(JSON.stringify(writeData)).digest('hex').slice(0, 32);

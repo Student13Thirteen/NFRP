@@ -40,6 +40,7 @@ function referenceData(): ReferenceData {
         lifecycleStatus: 'ACTIVE',
         lifecycleEndedAt: null,
         assignedDriverId: null,
+        vehicleType: null,
         createdAt: timestamp,
         updatedAt: timestamp
       }
@@ -91,6 +92,8 @@ describe('inbox aggiornamento tachigrafo digitale', () => {
         lifecycleStatus: 'ACTIVE',
         lifecycleEndedAt: null,
         assignedTractorId: null,
+        bodyType: null,
+        tankCargo: null,
         createdAt: timestamp,
         updatedAt: timestamp
       }

@@ -8,7 +8,8 @@ export const fuelEntryInclude = Prisma.validator<Prisma.FuelEntryInclude>()({
   fuelSupplier: true,
   fuelCard: { include: { fuelSupplier: true } },
   fuelProduct: true,
-  importBatch: true
+  importBatch: true,
+  vehicleOwner: { select: { id: true, name: true } }
 });
 
 export type FuelEntryWithRelations = Prisma.FuelEntryGetPayload<{ include: typeof fuelEntryInclude }>;
@@ -103,6 +104,8 @@ export function fuelEntryMatchesSearch(entry: FuelEntryWithRelations, query: str
       entry.fuelCard?.fuelSupplier?.name || '',
       entry.plate,
       getFuelVehicleLabel(entry),
+      entry.vehicleOwner?.name || '',
+      entry.externalVehicle ? 'mezzo esterno non aziendale' : '',
       getFuelDriverLabel(entry),
       entry.stationCode || '',
       entry.stationName || '',

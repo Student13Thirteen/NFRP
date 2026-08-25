@@ -20,6 +20,20 @@ describe('navigazione manutenzioni', () => {
     ).toEqual([['/maintenances', 'Manutenzioni']]);
   });
 
+  it('espone sinistri stradali e verbali come voci separate in Costi e controllo', () => {
+    const control = navigationGroups.find((group) => group.id === 'control');
+    expect(control?.items.some((item) => item.href === '/road-accidents' && item.label === 'Sinistri stradali')).toBe(true);
+    expect(control?.items.some((item) => item.href === '/fines' && item.label === 'Verbali')).toBe(true);
+    expect(getActiveNavigationContext('/road-accidents/new')?.groupLabel).toBe('Costi e controllo');
+    expect(getActiveNavigationContext('/fines/fine-1')?.item.label).toBe('Verbali');
+  });
+
+  it('presenta la flotta tipizzata e l’anagrafica dei proprietari terzi', () => {
+    const fleet = navigationGroups.find((group) => group.id === 'fleet');
+    expect(fleet?.items.some((item) => item.href === '/vehicles/tractors' && item.label === 'Mezzi a motore')).toBe(true);
+    expect(fleet?.items.some((item) => item.href === '/vehicles/owners' && item.label === 'Proprietari terzi')).toBe(true);
+  });
+
   it('mantiene la stessa area attiva su fatture, validazione e schede intervento', () => {
     expect(isActivePath('/maintenances/expenses/cms123', '/maintenances')).toBe(true);
     expect(isActivePath('/maintenances/expenses/review', '/maintenances')).toBe(true);

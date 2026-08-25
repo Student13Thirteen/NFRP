@@ -11,6 +11,8 @@ export const containerTripInclude = Prisma.validator<Prisma.ContainerTripInclude
   driver: true,
   tractor: true,
   trailer: true,
+  externalTractorOwner: { select: { id: true, name: true } },
+  externalTrailerOwner: { select: { id: true, name: true } },
   containers: { orderBy: { position: 'asc' } },
   stops: { orderBy: { position: 'asc' } },
   extras: {
@@ -175,6 +177,10 @@ export function containerTripMatchesSearch(trip: ContainerTripWithRelations, que
     trip.driver?.lastName,
     trip.tractor?.plate,
     trip.trailer?.plate,
+    trip.externalTractorPlate,
+    trip.externalTrailerPlate,
+    trip.externalTractorOwner?.name,
+    trip.externalTrailerOwner?.name,
     trip.booking,
     trip.ship,
     trip.shippingCompany,
@@ -182,4 +188,23 @@ export function containerTripMatchesSearch(trip: ContainerTripWithRelations, que
     ...trip.containers.flatMap((container) => [container.containerNumber, container.containerType]),
     ...trip.stops.flatMap((stop) => [stop.name, stop.city, stop.province])
   ].some((value) => String(value || '').toLocaleLowerCase('it-IT').includes(normalized));
+}
+
+/**
+ * Etichetta del mezzo usato nel viaggio: il mezzo di flotta quando c'e,
+ * altrimenti la targa non aziendale con il suo proprietario.
+ */
+export function getContainerTripVehicleLabel(input: {
+  vehicle: { plate: string; brand: string | null; model: string | null } | null;
+  externalPlate: string | null;
+  externalOwnerName: string | null;
+}): string {
+  if (input.vehicle) {
+    const details = [input.vehicle.brand, input.vehicle.model].filter(Boolean).join(' ');
+    return details ? `${input.vehicle.plate} - ${details}` : input.vehicle.plate;
+  }
+  if (!input.externalPlate) return '-';
+  return input.externalOwnerName
+    ? `${input.externalPlate} (mezzo di ${input.externalOwnerName})`
+    : `${input.externalPlate} (mezzo non nostro)`;
 }

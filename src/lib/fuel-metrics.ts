@@ -80,6 +80,7 @@ export type FuelMetricEntry = Pick<
   | 'volumeLitersMilli'
   | 'totalAmountCents'
   | 'manuallyVerified'
+  | 'externalVehicle'
   | 'status'
 > & {
   fuelProduct: { isFuel: boolean } | null;
@@ -119,8 +120,10 @@ export function calculateMetrics(
   let litersPer100KmTenths: number | null = null;
   let costPerKmMilliEuro: number | null = null;
 
-  if (!entry.tractorId) {
-    reasons.push('Targa non ancora presente in anagrafica trattori: aprila dal menu Trattori e completa i dati.');
+  // Un mezzo dichiarato non aziendale non deve finire in revisione soltanto
+  // perche la sua targa non e in flotta: e una scelta esplicita dell'operatore.
+  if (!entry.tractorId && !entry.externalVehicle) {
+    reasons.push('Targa non ancora presente in anagrafica mezzi: aprila dal menu Mezzi a motore e completa i dati.');
   }
 
   if (!isMetricFuelProduct(entry)) {

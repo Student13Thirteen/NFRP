@@ -5,6 +5,7 @@ import { AlertTriangle, ArrowRight, Download, Plus, Settings2, UploadCloud } fro
 import { DatePartFilters } from '@/components/DatePartFilters';
 import { FilteredReportButton } from '@/components/FilteredReportButton';
 import { PageHeader } from '@/components/PageHeader';
+import { PageSizeField } from '@/components/PageSizeField';
 import { TablePagination } from '@/components/TablePagination';
 import { buildDateFilterYears, parseFilterDateParts } from '@/lib/date-filters';
 import { formatDate } from '@/lib/dates';
@@ -109,7 +110,7 @@ function formatConsumptionFromTotals(volumeLitersMilli: number, km: number): str
 export default async function FuelPage({ searchParams }: FuelPageProps) {
   await requireUser();
   const resolvedSearchParams = await searchParams;
-  const [entries, tractors, drivers, suppliers, cards, products] = await Promise.all([
+  const [entries, tractors, drivers, suppliers, cards, products, vehicleOwners] = await Promise.all([
     prisma.fuelEntry.findMany({
       include: fuelEntryInclude,
       orderBy: [{ fuelDate: 'desc' }, { fuelTime: 'desc' }, { createdAt: 'desc' }]
@@ -121,7 +122,8 @@ export default async function FuelPage({ searchParams }: FuelPageProps) {
       include: { fuelSupplier: true, assignedTractor: true },
       orderBy: [{ active: 'desc' }, { fuelSupplier: { name: 'asc' } }, { cardNumber: 'asc' }]
     }),
-    prisma.fuelProduct.findMany({ orderBy: [{ active: 'desc' }, { name: 'asc' }, { code: 'asc' }] })
+    prisma.fuelProduct.findMany({ orderBy: [{ active: 'desc' }, { name: 'asc' }, { code: 'asc' }] }),
+    prisma.vehicleOwner.findMany({ orderBy: [{ active: 'desc' }, { name: 'asc' }] })
   ]);
 
   const tractorFilter = tractors.some((tractor) => tractor.id === resolvedSearchParams.tractorId) ? resolvedSearchParams.tractorId || '' : '';
@@ -135,6 +137,12 @@ export default async function FuelPage({ searchParams }: FuelPageProps) {
     : products.find((product) => product.code === resolvedSearchParams.productCode)?.id || '';
   const selectedProduct = products.find((product) => product.id === productFilter) || null;
   const reviewFilter = ['needs_review', 'verified', 'ok'].includes(resolvedSearchParams.review || '') ? resolvedSearchParams.review || '' : '';
+  const ownerFilter = vehicleOwners.some((owner) => owner.id === resolvedSearchParams.ownerId)
+    ? resolvedSearchParams.ownerId || ''
+    : '';
+  const vehicleSourceFilter = ['fleet', 'external'].includes(resolvedSearchParams.vehicleSource || '')
+    ? resolvedSearchParams.vehicleSource || ''
+    : '';
   const fromDate = parseFilterDateParts(resolvedSearchParams, 'from');
   const toDate = parseFilterDateParts(resolvedSearchParams, 'to');
   const yearOptions = buildDateFilterYears(entries.map((entry) => entry.fuelDate));
@@ -151,6 +159,8 @@ export default async function FuelPage({ searchParams }: FuelPageProps) {
     fuelCardId: cardFilter,
     fuelProductId: selectedProduct?.id || '',
     productCode: selectedProduct?.code || '',
+    ownerId: ownerFilter,
+    vehicleSource: vehicleSourceFilter,
     review: reviewFilter
   });
 
@@ -232,6 +242,7 @@ export default async function FuelPage({ searchParams }: FuelPageProps) {
       </section>
 
       <form className="filter-bar fuel-filter-bar" action="/fuel">
+        <PageSizeField pageSize={resolvedSearchParams.pageSize} />
         <label className="fuel-filter-search">
           Cerca
           <input name="q" placeholder="Targa, autista, tessera, distributore" defaultValue={resolvedSearchParams.q || ''} />
@@ -285,6 +296,28 @@ export default async function FuelPage({ searchParams }: FuelPageProps) {
             ))}
           </select>
         </label>
+        <label>
+          Mezzo
+          <select name="vehicleSource" defaultValue={vehicleSourceFilter}>
+            <option value="">Tutti</option>
+            <option value="fleet">Solo flotta aziendale</option>
+            <option value="external">Solo mezzi non nostri</option>
+          </select>
+        </label>
+        {vehicleOwners.length > 0 ? (
+          <label>
+            Proprietario terzo
+            <select name="ownerId" defaultValue={ownerFilter}>
+              <option value="">Tutti</option>
+              {vehicleOwners.map((owner) => (
+                <option key={owner.id} value={owner.id}>
+                  {owner.name}
+                  {owner.active ? '' : ' (non attivo)'}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
         <label>
           Prodotto
           <select name="fuelProductId" defaultValue={productFilter}>
@@ -389,66 +422,76 @@ export default async function FuelPage({ searchParams }: FuelPageProps) {
                 </td>
               </tr>
             ) : (
+              // Con 200 righe o "Tutte" la tabella arriva a centinaia di righe e
+              // ognuna ripete lo stesso collegamento in undici celle: senza
+              // prefetch la pagina non apre una richiesta per ogni cella visibile.
               pagination.items.map((entry) => {
                 const fuelHref = `/fuel/${entry.id}`;
                 return (
                   <tr className="clickable-row" key={entry.id}>
                     <td className="click-cell">
-                      <Link className="table-cell-link" href={fuelHref}>
+                      <Link className="table-cell-link" href={fuelHref} prefetch={false}>
                         {formatDate(entry.fuelDate)}
                         {entry.fuelTime ? <div className="muted">{entry.fuelTime}</div> : null}
                       </Link>
                     </td>
                     <td className="click-cell">
-                      <Link className="table-cell-link" href={fuelHref}>
+                      <Link className="table-cell-link" href={fuelHref} prefetch={false}>
                         {getFuelVehicleLabel(entry)}
+                        {entry.externalVehicle ? (
+                          <div>
+                            <span className="badge external-vehicle-badge">
+                              {entry.vehicleOwner ? `Mezzo di ${entry.vehicleOwner.name}` : 'Mezzo non nostro'}
+                            </span>
+                          </div>
+                        ) : null}
                       </Link>
                     </td>
                     <td className="click-cell">
-                      <Link className="table-cell-link" href={fuelHref}>
+                      <Link className="table-cell-link" href={fuelHref} prefetch={false}>
                         {getFuelDriverLabel(entry)}
                       </Link>
                     </td>
                     <td className="click-cell">
-                      <Link className="table-cell-link" href={fuelHref}>
+                      <Link className="table-cell-link" href={fuelHref} prefetch={false}>
                         {entry.fuelSupplier?.name || entry.fuelCard?.fuelSupplier?.name || '-'}
                         <div className="muted">{entry.fuelCard?.cardNumber || entry.cardNumber}</div>
                       </Link>
                     </td>
                     <td className="click-cell">
-                      <Link className="table-cell-link" href={fuelHref}>
+                      <Link className="table-cell-link" href={fuelHref} prefetch={false}>
                         {entry.fuelProduct?.name || entry.productName || entry.productCode}
                       </Link>
                     </td>
                     <td className="click-cell">
-                      <Link className="table-cell-link" href={fuelHref}>
+                      <Link className="table-cell-link" href={fuelHref} prefetch={false}>
                         {entry.odometerKm ? `${entry.odometerKm.toLocaleString('it-IT')} km` : '-'}
                         {entry.kmDelta ? <div className="muted">+{entry.kmDelta.toLocaleString('it-IT')} km</div> : null}
                       </Link>
                     </td>
                     <td className="click-cell">
-                      <Link className="table-cell-link" href={fuelHref}>
+                      <Link className="table-cell-link" href={fuelHref} prefetch={false}>
                         {formatFuelLiters(entry.volumeLitersMilli)}
                       </Link>
                     </td>
                     <td className="click-cell">
-                      <Link className="table-cell-link" href={fuelHref}>
+                      <Link className="table-cell-link" href={fuelHref} prefetch={false}>
                         {formatFuelPrice(entry.grossPricePerLiterMilliEuro)}
                       </Link>
                     </td>
                     <td className="click-cell">
-                      <Link className="table-cell-link" href={fuelHref}>
+                      <Link className="table-cell-link" href={fuelHref} prefetch={false}>
                         {formatFuelMoney(entry.totalAmountCents)}
                       </Link>
                     </td>
                     <td className="click-cell">
-                      <Link className="table-cell-link" href={fuelHref}>
+                      <Link className="table-cell-link" href={fuelHref} prefetch={false}>
                         {formatFuelCostPerKm(entry.costPerKmMilliEuro)}
                         {entry.litersPer100KmTenths ? <div className="muted">{formatFuelConsumption(entry.litersPer100KmTenths)}</div> : null}
                       </Link>
                     </td>
                     <td className="click-cell">
-                      <Link className="table-cell-link" href={fuelHref}>
+                      <Link className="table-cell-link" href={fuelHref} prefetch={false}>
                         <span className={`badge fuel-status-${entry.status.toLowerCase().replace('_', '-')}`}>
                           {entry.status === FuelEntryStatus.NEEDS_REVIEW ? <AlertTriangle size={13} aria-hidden /> : null}
                           {getFuelEntryStatusLabel(entry.status)}
@@ -462,7 +505,7 @@ export default async function FuelPage({ searchParams }: FuelPageProps) {
                     </td>
                     <td>
                       {entry.importBatch ? (
-                        <Link className="secondary-button compact-button" href={`/api/fuel/imports/${entry.importBatch.id}/file`} target="_blank">
+                        <Link className="secondary-button compact-button" href={`/api/fuel/imports/${entry.importBatch.id}/file`} target="_blank" prefetch={false}>
                           <Download size={15} aria-hidden />
                           PDF
                         </Link>

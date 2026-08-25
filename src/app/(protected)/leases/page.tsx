@@ -2,6 +2,7 @@ import { requireUser } from '@/lib/auth';
 import Link from 'next/link';
 import { ArrowRight, FileCheck2, Filter, UploadCloud } from 'lucide-react';
 import { PageHeader } from '@/components/PageHeader';
+import { PageSizeField } from '@/components/PageSizeField';
 import { TablePagination } from '@/components/TablePagination';
 import { formatDate } from '@/lib/dates';
 import { prisma } from '@/lib/db';
@@ -78,6 +79,7 @@ export default async function LeasesPage({ searchParams }: LeasePageProps) {
       </section>
 
       <form className="filter-bar" action="/leases">
+        <PageSizeField pageSize={params.pageSize} />
         <label>
           Cerca
           <input name="q" placeholder="Contratto, locatore, targa" defaultValue={params.q || ''} />

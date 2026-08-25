@@ -10,6 +10,8 @@ export type FuelSearchParams = DateFilterSearchParams & {
   fuelCardId?: string;
   fuelProductId?: string;
   productCode?: string;
+  ownerId?: string;
+  vehicleSource?: string;
   review?: string;
   page?: string;
   pageSize?: string;
@@ -31,6 +33,9 @@ export function filterFuelEntries(entries: FuelEntryWithRelations[], params: Fue
     if (params.driverId && entry.driverId !== params.driverId) return false;
     if (params.fuelSupplierId && entry.fuelSupplierId !== params.fuelSupplierId) return false;
     if (params.fuelCardId && entry.fuelCardId !== params.fuelCardId) return false;
+    if (params.ownerId && entry.vehicleOwnerId !== params.ownerId) return false;
+    if (params.vehicleSource === 'external' && !entry.externalVehicle) return false;
+    if (params.vehicleSource === 'fleet' && entry.externalVehicle) return false;
     if (params.fuelProductId && entry.fuelProductId !== params.fuelProductId && entry.productCode !== params.productCode) return false;
     if (!params.fuelProductId && params.productCode && entry.productCode !== params.productCode) return false;
     if (params.review === 'needs_review' && entry.status !== FuelEntryStatus.NEEDS_REVIEW) return false;

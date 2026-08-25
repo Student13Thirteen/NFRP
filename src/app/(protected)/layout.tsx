@@ -2,11 +2,13 @@ import { requireUser } from '@/lib/auth';
 import { Suspense } from 'react';
 import { PoweredByNFRP } from '@/components/AppBrand';
 import { AppNavigation } from '@/components/AppNavigation';
+import { AppVersionWatcher } from '@/components/AppVersionWatcher';
 import { AssistantChatWidget } from '@/components/AssistantChatWidget';
 import { DashboardSectionMenu } from '@/components/DashboardSectionMenu';
 import { FlashMessage } from '@/components/FlashMessage';
 import { FormDraftCleanup } from '@/components/FormDraftCleanup';
 import { ThemeToggle } from '@/components/ThemeToggle';
+import { getAppBuildId } from '@/lib/app-version';
 import { getAssistantEnabled } from '@/lib/env';
 import { getBranding } from '@/lib/branding';
 import { getFlashMessage } from '@/lib/flash';
@@ -50,6 +52,7 @@ export default async function ProtectedLayout({ children }: { children: React.Re
           <DashboardSectionMenu />
           <ThemeToggle />
         </div>
+        <AppVersionWatcher buildId={getAppBuildId()} />
         <FlashMessage key={flash?.createdAt ?? 'empty-flash'} flash={flash} />
         {children}
       </main>

@@ -352,6 +352,82 @@ input[type='checkbox'] {
   white-space: nowrap;
 }
 
+.file-missing-link:hover,
+.file-missing-link:focus-visible {
+  border-color: var(--primary);
+  color: var(--primary);
+  outline: none;
+}
+
+#modifica-manutenzione {
+  scroll-margin-top: 18px;
+}
+
+.expense-safe-edit-notice {
+  align-items: flex-start;
+  display: flex;
+  gap: 10px;
+  margin-bottom: 18px;
+}
+
+.expense-safe-edit-notice svg {
+  flex: 0 0 auto;
+  margin-top: 2px;
+}
+
+.expense-text-edit-list {
+  display: grid;
+  gap: 14px;
+}
+
+.expense-text-edit-row {
+  background: var(--surface-soft);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+  padding: 16px;
+}
+
+.expense-text-edit-heading {
+  align-items: baseline;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  justify-content: space-between;
+}
+
+.expense-text-edit-heading span,
+.expense-locked-allocation {
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.expense-locked-allocation {
+  align-items: flex-start;
+  display: flex;
+  gap: 7px;
+}
+
+.expense-locked-allocation svg {
+  flex: 0 0 auto;
+  margin-top: 1px;
+}
+
+.expense-edit-driver-list {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+}
+
+.expense-edit-driver-list > div,
+.expense-edit-driver-list label,
+.expense-edit-driver-list select {
+  min-width: 0;
+  width: 100%;
+}
+
 .table-wrap {
   overflow-x: auto;
 }
@@ -2343,7 +2419,7 @@ html[data-theme='dark'] .brand-logo {
   }
 }
 
-/* NFRP red brand refresh */
+/* NFRP brand theme */
 :root,
 html[data-theme='light'] {
   --bg: #f3f4f6;
@@ -3706,6 +3782,46 @@ html[data-theme='dark'] .assistant-panel {
   display: grid;
   gap: 9px;
   margin-top: 20px;
+}
+
+.timeline-list {
+  display: grid;
+  gap: 8px;
+}
+
+.timeline-list article {
+  align-items: center;
+  background: var(--surface-soft);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  min-width: 0;
+  padding: 10px 12px;
+}
+
+.timeline-list article strong {
+  min-width: 0;
+}
+
+.timeline-list article > span {
+  color: var(--muted);
+  flex: 0 0 auto;
+  font-size: 0.82rem;
+}
+
+.timeline-list article small {
+  display: block;
+  margin-top: 2px;
+}
+
+@media (max-width: 640px) {
+  .timeline-list article {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 4px;
+  }
 }
 
 .assignment-history h3 {
@@ -5466,6 +5582,9 @@ a.topbar-context:focus-visible {
     pointer-events: auto;
   }
 
+  /* Il drawer chiuso e nascosto gia al primo paint: `visibility: hidden` lo toglie da
+     tabulazione e screen reader senza attendere l'idratazione, e la transizione resta
+     visibile perche `visibility` torna subito visibile in apertura. */
   .sidebar {
     border-bottom: 0;
     border-right: 1px solid var(--sidebar-border);
@@ -6071,8 +6190,17 @@ a.topbar-context:focus-visible {
   border-radius: 7px;
   display: grid;
   gap: 10px;
-  grid-template-columns: minmax(120px, 0.45fr) minmax(280px, 1.4fr) minmax(170px, 0.65fr) 36px;
+  grid-template-columns:
+    minmax(110px, 0.42fr)
+    minmax(240px, 1.15fr)
+    minmax(150px, 0.62fr)
+    minmax(220px, 1fr)
+    36px;
   padding: 10px;
+}
+
+.expense-decimal-hint {
+  margin: 0;
 }
 
 .expense-allocation-row > label {
@@ -6150,7 +6278,12 @@ a.topbar-context:focus-visible {
   }
 
   .expense-allocation-row {
-    grid-template-columns: minmax(110px, 0.45fr) minmax(240px, 1.35fr) minmax(150px, 0.65fr) 36px;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) 36px;
+  }
+
+  .expense-field-allocation,
+  .expense-field-driver {
+    grid-column: span 1;
   }
 }
 
@@ -6247,6 +6380,21 @@ a.topbar-context:focus-visible {
   font-weight: 750;
   gap: 6px;
   white-space: nowrap;
+}
+
+/* Il selettore delle righe e un form GET: i campi nascosti che conservano i
+   filtri non devono occupare spazio nella barra. */
+.pagination-size input[type='hidden'] {
+  display: none;
+}
+
+.pagination-size-label {
+  align-items: center;
+  color: inherit;
+  display: flex;
+  font-size: inherit;
+  font-weight: inherit;
+  gap: 6px;
 }
 
 .pagination-size select {
@@ -6557,4 +6705,305 @@ a.topbar-context:focus-visible {
   .import-batch-summary > span:nth-child(4) {
     border-top: 1px solid var(--border);
   }
+}
+
+/* ==========================================================================
+   Tipologie di flotta, storico documenti in scheda e mezzi non aziendali
+   ========================================================================== */
+
+/* Barra di filtro a chip: gruppi di destinazioni brevi che devono restare su
+   una riga leggibile e andare a capo senza deformarsi come farebbe una griglia. */
+.type-filter-bar {
+  align-items: center;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: var(--shadow-soft);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 16px;
+  padding: 12px 14px;
+}
+
+.type-filter-bar + .type-filter-bar {
+  margin-top: -8px;
+}
+
+.type-filter-bar .filter-count {
+  margin-right: 4px;
+}
+
+.type-filter-bar .primary-button,
+.type-filter-bar .secondary-button {
+  min-height: 38px;
+  padding: 8px 12px;
+}
+
+/* Seconda riga: sottotipi disponibili solo quando il tipo padre e selezionato. */
+.type-filter-subbar {
+  background: color-mix(in srgb, var(--surface-soft) 62%, var(--surface));
+}
+
+.badge.vehicle-type-badge {
+  background: var(--surface-soft);
+  color: var(--heading);
+}
+
+.badge.vehicle-type-badge.unclassified {
+  background: var(--yellow-soft);
+  color: var(--yellow);
+}
+
+.section-count {
+  color: var(--muted);
+  font-weight: 700;
+}
+
+/* Storico documenti della scheda mezzo: presente ma chiuso, per non far
+   scomparire le scadenze in vigore sotto decine di rinnovi passati. */
+.document-history-section > details > summary {
+  align-items: center;
+  cursor: pointer;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  list-style-position: inside;
+}
+
+.document-history-section > details > summary .muted {
+  flex-basis: 100%;
+  font-size: 0.85rem;
+}
+
+.document-history-summary {
+  align-items: center;
+  display: inline-flex;
+  gap: 8px;
+}
+
+.document-history-summary strong {
+  color: var(--heading);
+}
+
+.document-history-body {
+  display: grid;
+  gap: 14px;
+  margin-top: 14px;
+}
+
+.document-history-body .secondary-button {
+  justify-self: start;
+}
+
+/* Abbinamento trattore-semirimorchio: elenco compatto con sgancio immediato. */
+.vehicle-pairing-list {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.vehicle-pairing-row {
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: space-between;
+  padding: 10px 13px;
+}
+
+.vehicle-pairing-row > div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.vehicle-pairing-plate {
+  color: var(--heading);
+  font-weight: 820;
+}
+
+/* Avviso non bloccante: l'abbinamento resta possibile, ma dichiarato. */
+.pairing-warning {
+  align-items: flex-start;
+  background: var(--yellow-soft);
+  border-radius: 8px;
+  color: var(--yellow);
+  display: flex;
+  font-size: 0.86rem;
+  font-weight: 700;
+  gap: 8px;
+  padding: 10px 12px;
+}
+
+/* Blocco targa esterna nei rifornimenti e nei viaggi. */
+.external-vehicle-block {
+  background: color-mix(in srgb, var(--surface-soft) 58%, var(--surface));
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  display: grid;
+  gap: 14px;
+  padding: 14px;
+}
+
+.external-vehicle-block > .form-grid {
+  margin: 0;
+}
+
+.vehicle-source-choice {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.vehicle-source-choice label {
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: row;
+  gap: 8px;
+  font-weight: 700;
+  padding: 10px 13px;
+}
+
+.vehicle-source-choice label.selected {
+  background: var(--accent-soft);
+  border-color: color-mix(in srgb, var(--accent, #0f766e) 45%, var(--border));
+}
+
+.vehicle-source-choice input {
+  height: auto;
+  margin: 0;
+  width: auto;
+}
+
+.badge.external-vehicle-badge {
+  background: var(--yellow-soft);
+  color: var(--yellow);
+}
+
+@media (max-width: 640px) {
+  .type-filter-bar {
+    gap: 7px;
+  }
+
+  .type-filter-bar .primary-button,
+  .type-filter-bar .secondary-button {
+    flex: 1 1 auto;
+    justify-content: center;
+  }
+
+  .vehicle-pairing-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}
+
+/* Avviso non bloccante: l'operazione e riuscita, ma va letta prima di andare avanti. */
+.feedback-banner.warning {
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--yellow-soft) 76%, transparent), transparent 62%),
+    var(--surface);
+  border-color: color-mix(in srgb, var(--yellow) 32%, var(--border));
+}
+
+.feedback-banner.warning svg {
+  color: var(--yellow);
+}
+
+/* Classificazione rapida dalle liste flotta: tendina compatta che salva da sola. */
+.inline-type-select {
+  align-items: center;
+  display: inline-flex;
+  gap: 7px;
+  min-width: 0;
+}
+
+/* La tendina deve mostrare per intero "Da classificare" e "Autovettura":
+   niente larghezza massima e una minima sufficiente al testo piu lungo. */
+.inline-type-select select {
+  min-height: 36px;
+  min-width: 168px;
+  padding: 6px 9px;
+  width: 100%;
+}
+
+.inline-type-select select:disabled {
+  opacity: 0.7;
+}
+
+.inline-type-state {
+  align-items: center;
+  color: var(--muted);
+  display: inline-flex;
+  font-size: 0.78rem;
+  font-weight: 700;
+  gap: 4px;
+  min-width: 16px;
+}
+
+.inline-type-state svg {
+  color: var(--success);
+}
+
+.inline-type-state.has-error,
+.inline-type-state.has-error svg {
+  color: var(--danger);
+}
+
+.inline-type-select-trailer {
+  flex-wrap: wrap;
+}
+
+.inline-type-select-trailer select {
+  min-width: 152px;
+}
+
+/* La colonna della tipologia non deve essere compressa dalle altre. */
+.fleet-type-cell {
+  min-width: 210px;
+}
+
+.inline-type-select-trailer + .inline-type-state,
+td.fleet-type-cell .inline-type-select {
+  width: 100%;
+}
+
+/* Avviso di versione aggiornata: la pagina aperta appartiene a una build
+   precedente e i suoi file non esistono piu sul server. */
+.app-update-banner {
+  align-items: center;
+  background: var(--yellow-soft);
+  border: 1px solid color-mix(in srgb, var(--yellow) 38%, var(--border));
+  border-radius: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 16px;
+  padding: 13px 15px;
+}
+
+.app-update-banner > svg {
+  color: var(--yellow);
+  flex: 0 0 auto;
+}
+
+.app-update-banner > div {
+  display: grid;
+  flex: 1 1 260px;
+  gap: 3px;
+  min-width: 0;
+}
+
+.app-update-banner strong {
+  color: var(--heading);
+}
+
+.app-update-banner span {
+  color: var(--muted);
+  font-size: 0.88rem;
 }

@@ -68,6 +68,7 @@ describe('trip PDF generation', () => {
         lifecycleStatus: 'ACTIVE',
         lifecycleEndedAt: null,
         assignedDriverId: null,
+        vehicleType: null,
         createdAt: now,
         updatedAt: now
       },
@@ -82,6 +83,8 @@ describe('trip PDF generation', () => {
         lifecycleStatus: 'ACTIVE',
         lifecycleEndedAt: null,
         assignedTractorId: null,
+        bodyType: null,
+        tankCargo: null,
         createdAt: now,
         updatedAt: now
       },

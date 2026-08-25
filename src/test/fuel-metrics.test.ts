@@ -20,6 +20,7 @@ function buildEntry(overrides: Partial<FuelMetricEntry>): FuelMetricEntry {
     volumeLitersMilli: 0,
     totalAmountCents: 0,
     manuallyVerified: false,
+    externalVehicle: false,
     status: FuelEntryStatus.OK,
     fuelProduct: { isFuel: true },
     ...overrides
