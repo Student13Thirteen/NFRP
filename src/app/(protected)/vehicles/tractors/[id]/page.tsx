@@ -1,12 +1,13 @@
 import { requireUser } from '@/lib/auth';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { EntityType } from '@prisma/client';
-import { Archive, CalendarDays, CheckCircle2, CircleAlert, Download, FilePlus, Plus, Save, Trash2, UserRound } from 'lucide-react';
+import { EntityType, VehicleLifecycleStatus } from '@prisma/client';
+import { Archive, CalendarDays, CheckCircle2, CircleAlert, Download, FilePlus, Link2, Link2Off, Plus, Save, Trash2, Truck, UserRound } from 'lucide-react';
 import { ConfirmSubmitButton } from '@/components/ConfirmSubmitButton';
 import { DatePartsInput } from '@/components/DatePartsInput';
 import { DocumentChecklist } from '@/components/DocumentChecklist';
-import { DocumentTable } from '@/components/DocumentTable';
+import { EntityDocumentSections } from '@/components/EntityDocumentSections';
+import { EntityRoadEventsPanel } from '@/components/EntityRoadEventsPanel';
 import { PageHeader } from '@/components/PageHeader';
 import { VehicleExpensesPanel } from '@/components/VehicleExpensesPanel';
 import { VehicleLifecycleFields } from '@/components/VehicleLifecycleFields';
@@ -19,18 +20,26 @@ import {
   isDisposedVehicleStatus
 } from '@/lib/vehicle-lifecycle';
 import {
+  assignTrailerToTractorAction,
   createTractorDriverAssignmentAction,
   deleteTractorDriverAssignmentAction,
+  detachTrailerFromTractorAction,
   updateTractorAction,
   updateTractorDriverAssignmentAction
 } from '../actions';
+import {
+  MOTOR_VEHICLE_TYPES,
+  getMotorVehicleHeading,
+  getMotorVehicleTypeLabel,
+  getTrailerTypeLabel
+} from '@/lib/vehicle-types';
 import { formatDate, toDateInputValue } from '@/lib/dates';
 import { getDriverAssignmentStatus } from '@/lib/driver-assignment-core';
 import { isTachographUpdateDocumentTypeName } from '@/lib/tachograph-update';
 
 type TractorDetailPageProps = {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ assignmentError?: string }>;
+  searchParams: Promise<{ assignmentError?: string; pairingError?: string }>;
 };
 
 export default async function TractorDetailPage({ params, searchParams }: TractorDetailPageProps) {
@@ -40,7 +49,7 @@ export default async function TractorDetailPage({ params, searchParams }: Tracto
   const tractor = await prisma.tractor.findUnique({ where: { id } });
   if (!tractor) notFound();
 
-  const [documents, documentTypes, checklistExclusions, drivers, driverAssignments] = await Promise.all([
+  const [documents, documentTypes, checklistExclusions, drivers, driverAssignments, pairedTrailers, selectableTrailers, roadFines, roadAccidents] = await Promise.all([
     prisma.document.findMany({
       where: { tractorId: tractor.id },
       include: documentInclude,
@@ -60,6 +69,32 @@ export default async function TractorDetailPage({ params, searchParams }: Tracto
       where: { tractorId: tractor.id },
       include: { driver: true },
       orderBy: [{ validFrom: 'desc' }, { createdAt: 'desc' }]
+    }),
+    prisma.trailer.findMany({
+      where: { assignedTractorId: tractor.id },
+      orderBy: { plate: 'asc' }
+    }),
+    // Restano selezionabili anche i semirimorchi gia abbinati altrove: la
+    // tendina lo dichiara e l'abbinamento resta possibile. Il confronto va
+    // scritto con l'OR esplicito: `not` diventa `<>` in SQL ed escluderebbe
+    // proprio i semirimorchi liberi, che hanno `assignedTractorId` nullo.
+    prisma.trailer.findMany({
+      where: {
+        lifecycleStatus: VehicleLifecycleStatus.ACTIVE,
+        OR: [{ assignedTractorId: null }, { assignedTractorId: { not: tractor.id } }]
+      },
+      include: { assignedTractor: { select: { plate: true } } },
+      orderBy: [{ assignedTractorId: 'asc' }, { plate: 'asc' }]
+    }),
+    prisma.roadFine.findMany({
+      where: { tractorId: tractor.id },
+      select: { id: true, violationDate: true, noticeNumber: true, authority: true, status: true },
+      orderBy: { violationDate: 'desc' }
+    }),
+    prisma.roadAccident.findMany({
+      where: { tractorId: tractor.id },
+      select: { id: true, accidentDate: true, claimNumber: true, location: true, status: true },
+      orderBy: { accidentDate: 'desc' }
     })
   ]);
   const checklist = buildDocumentChecklist(documentTypes, documents, checklistExclusions);
@@ -80,8 +115,8 @@ export default async function TractorDetailPage({ params, searchParams }: Tracto
   return (
     <>
       <PageHeader
-        title={`Trattore ${tractor.plate}`}
-        description="Scheda trattore"
+        title={getMotorVehicleHeading(tractor)}
+        description={`Scheda mezzo - ${getMotorVehicleTypeLabel(tractor.vehicleType)}`}
         action={
           disposed ? (
             <Link className="secondary-button" href={`/documents/disposed?entityKey=TRACTOR:${tractor.id}`}>
@@ -139,12 +174,23 @@ export default async function TractorDetailPage({ params, searchParams }: Tracto
       <div className="grid">
         <div className={`grid${disposed ? '' : ' two'}`}>
           <section className="panel">
-            <h2>Dati trattore</h2>
+            <h2>Dati mezzo</h2>
             <form action={updateTractorAction.bind(null, tractor.id)} className="form-stack">
               <div className="form-grid">
                 <label>
                   Targa
                   <input name="plate" defaultValue={tractor.plate} required />
+                </label>
+                <label>
+                  Tipologia
+                  <select name="vehicleType" defaultValue={tractor.vehicleType || ''}>
+                    <option value="">Da classificare</option>
+                    {MOTOR_VEHICLE_TYPES.map((type) => (
+                      <option key={type} value={type}>
+                        {getMotorVehicleTypeLabel(type)}
+                      </option>
+                    ))}
+                  </select>
                 </label>
                 <label>
                   Marca
@@ -282,11 +328,96 @@ export default async function TractorDetailPage({ params, searchParams }: Tracto
             })}
           </div>
         </section>
-        <section className="detail-section">
-          <h2>Documenti targa</h2>
-          <DocumentTable documents={documents} />
-        </section>
+        {!disposed ? (
+          <section className="panel" id="trailer-pairing">
+            <div className="section-heading-inline">
+              <div>
+                <h2>Semirimorchio abbinato</h2>
+                <p className="muted">Il complesso mezzo abituale. Serve a ritrovare il rimorchiato giusto da targa a targa.</p>
+              </div>
+              <span className={`badge ${pairedTrailers.length > 0 ? 'valid' : 'inactive'}`}>
+                {pairedTrailers.length === 0
+                  ? 'Nessun abbinamento'
+                  : pairedTrailers.length === 1
+                    ? pairedTrailers[0].plate
+                    : `${pairedTrailers.length} semirimorchi`}
+              </span>
+            </div>
+
+            {resolvedSearchParams.pairingError ? (
+              <p className="form-error" role="alert">{resolvedSearchParams.pairingError}</p>
+            ) : null}
+
+            {pairedTrailers.length > 1 ? (
+              <p className="pairing-warning" role="status">
+                <CircleAlert size={16} aria-hidden />
+                Questo trattore risulta abbinato a piu di un semirimorchio. E permesso, ma di norma il complesso e uno solo:
+                verifica e sgancia quelli non piu in uso.
+              </p>
+            ) : null}
+
+            {pairedTrailers.length > 0 ? (
+              <div className="vehicle-pairing-list">
+                {pairedTrailers.map((trailer) => (
+                  <div className="vehicle-pairing-row" key={trailer.id}>
+                    <div>
+                      <Link className="vehicle-pairing-plate" href={`/vehicles/trailers/${trailer.id}`}>
+                        {trailer.plate}
+                      </Link>
+                      <span className="muted">
+                        {getTrailerTypeLabel(trailer)}
+                        {[trailer.brand, trailer.model].filter(Boolean).length > 0
+                          ? ` - ${[trailer.brand, trailer.model].filter(Boolean).join(' ')}`
+                          : ''}
+                      </span>
+                    </div>
+                    <form action={detachTrailerFromTractorAction.bind(null, tractor.id, trailer.id)}>
+                      <ConfirmSubmitButton
+                        className="secondary-button compact-button"
+                        message={`Sganciare ${trailer.plate} da questo trattore? Documenti, costi e storico restano invariati.`}
+                      >
+                        <Link2Off size={15} aria-hidden />
+                        Sgancia
+                      </ConfirmSubmitButton>
+                    </form>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="empty-state assignment-empty-state">
+                <Truck size={24} aria-hidden />
+                <strong>Nessun semirimorchio abbinato</strong>
+                <span>Scegli la targa rimorchiata abituale: la trovi poi anche dalla scheda del semirimorchio.</span>
+              </div>
+            )}
+
+            <form action={assignTrailerToTractorAction.bind(null, tractor.id)} className="form-stack">
+              <label>
+                Abbina semirimorchio
+                <select name="trailerId" defaultValue="" required>
+                  <option value="">Seleziona targa</option>
+                  {selectableTrailers.map((trailer) => (
+                    <option key={trailer.id} value={trailer.id}>
+                      {`${trailer.plate} - ${getTrailerTypeLabel(trailer)}`}
+                      {trailer.assignedTractor?.plate ? ` (gia con ${trailer.assignedTractor.plate})` : ''}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <p className="muted">
+                Le targhe gia abbinate a un altro trattore restano selezionabili: il gestionale avvisa e sostituisce
+                l&apos;abbinamento precedente invece di bloccarti.
+              </p>
+              <button className="primary-button" type="submit">
+                <Link2 size={16} aria-hidden />
+                Abbina
+              </button>
+            </form>
+          </section>
+        ) : null}
+        <EntityDocumentSections documents={documents} entityKey={`TRACTOR:${tractor.id}`} />
         <VehicleExpensesPanel tractorId={tractor.id} />
+        <EntityRoadEventsPanel fines={roadFines} accidents={roadAccidents} />
       </div>
     </>
   );

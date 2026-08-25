@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { ArrowRight, Download, Plus, Settings2 } from 'lucide-react';
 import { FilteredReportButton } from '@/components/FilteredReportButton';
 import { PageHeader } from '@/components/PageHeader';
+import { PageSizeField } from '@/components/PageSizeField';
 import { TablePagination } from '@/components/TablePagination';
 import { formatDate } from '@/lib/dates';
 import { prisma } from '@/lib/db';
@@ -112,6 +113,7 @@ export default async function FuelDeliveryTripsPage({ searchParams }: TripsPageP
       </section>
 
       <form className="filter-bar" action="/trips/fuel">
+        <PageSizeField pageSize={resolvedSearchParams.pageSize} />
         <label>
           Cerca
           <input name="q" placeholder="Targa, autista, punto vendita, codice" defaultValue={resolvedSearchParams.q || ''} />

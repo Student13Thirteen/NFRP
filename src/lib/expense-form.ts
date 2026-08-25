@@ -1,7 +1,7 @@
 import 'server-only';
 
 import { createHash, randomUUID } from 'node:crypto';
-import { Prisma } from '@prisma/client';
+import { Prisma, RoadAccidentStatus } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { emptyStoredPdf, removeStoredPdf, storePdfFile, type NullableStoredPdf } from '@/lib/files';
 import { formString, optionalFormString } from '@/lib/form';
@@ -435,6 +435,14 @@ export async function createExpenseDocumentFromForm(formData: FormData): Promise
   const documentDate = parseDate(formString(formData, 'documentDate'), false, 'Data documento');
   const supplierId = optionalFormString(formData, 'supplierId');
   const supplierName = await getSupplierName(supplierId);
+  const roadAccidentId = optionalFormString(formData, 'roadAccidentId');
+  if (roadAccidentId) {
+    const accident = await prisma.roadAccident.findFirst({
+      where: { id: roadAccidentId, status: { not: RoadAccidentStatus.CANCELLED } },
+      select: { id: true }
+    });
+    if (!accident) throw new Error('Sinistro collegato non valido o annullato.');
+  }
   const lines = parseExpenseLines(formData);
   if (lines.length === 0) throw new Error('Aggiungi almeno una riga di spesa.');
 
@@ -460,6 +468,7 @@ export async function createExpenseDocumentFromForm(formData: FormData): Promise
     .update(JSON.stringify({
       supplierId,
       supplierName,
+      roadAccidentId,
       documentNumber,
       documentDate: documentDate?.toISOString() || null,
       registeredAt: registeredAt.toISOString(),
@@ -489,6 +498,7 @@ export async function createExpenseDocumentFromForm(formData: FormData): Promise
           importKey,
           supplierId,
           supplierName,
+          roadAccidentId,
           documentNumber,
           documentDate,
           registeredAt,

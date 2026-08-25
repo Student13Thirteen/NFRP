@@ -1,16 +1,44 @@
-import { ContainerTripExtraStatus, ContainerTripStatus, FuelEntryStatus, MaintenanceStatus, TripStatus, WarehouseMovementType } from '@prisma/client';
+import {
+  ContainerTripExtraStatus,
+  ContainerTripStatus,
+  FuelEntryStatus,
+  MaintenanceStatus,
+  RoadAccidentStatus,
+  RoadFineStatus,
+  TripStatus,
+  WarehouseMovementType
+} from '@prisma/client';
 import { containerTripInclude, getContainerTripStatusLabel } from '@/lib/container-trips';
 import { formatDate } from '@/lib/dates';
 import { prisma } from '@/lib/db';
 import { allocateExpenseLineAmounts, formatEuroCents } from '@/lib/expense-shared';
 import { getFuelEntryStatusLabel } from '@/lib/fuel';
 import { getMaintenanceStatusLabel } from '@/lib/maintenance';
+import {
+  getRoadAccidentAccountingMovements,
+  getRoadAccidentStatusLabel,
+  getRoadFineAccountingMovement,
+  getRoadFineStatusLabel
+} from '@/lib/road-events-core';
 import { getTollEntryStatusLabel, REPORTABLE_TOLL_ENTRY_STATUSES } from '@/lib/tolls';
 import { getTripBillingStatusLabel, getTripSalesPointSummary, getVehicleLabel, tripInclude } from '@/lib/trips';
 import { getWarehouseStatusLabel } from '@/lib/warehouse';
 import { documentInclude, getEntityLabel, getStatusLabel } from '@/lib/documents';
 
-export const COST_SOURCE_VALUES = ['TRIPS', 'CONTAINER_TRIPS', 'FUEL', 'TOLLS', 'LEASE', 'EXPENSE', 'MAINTENANCE', 'DOCUMENT', 'WAREHOUSE', 'WAREHOUSE_MOUNT'] as const;
+export const COST_SOURCE_VALUES = [
+  'TRIPS',
+  'CONTAINER_TRIPS',
+  'FUEL',
+  'TOLLS',
+  'LEASE',
+  'EXPENSE',
+  'MAINTENANCE',
+  'FINES',
+  'ROAD_ACCIDENTS',
+  'DOCUMENT',
+  'WAREHOUSE',
+  'WAREHOUSE_MOUNT'
+] as const;
 export const COST_SCOPE_VALUES = ['all', 'accounting', 'internal', 'forecast'] as const;
 
 export type CostSource = (typeof COST_SOURCE_VALUES)[number];
@@ -67,6 +95,10 @@ export function getCostSourceLabel(source: CostSource): string {
       return 'Fatture/DDT';
     case 'MAINTENANCE':
       return 'Manutenzioni';
+    case 'FINES':
+      return 'Verbali';
+    case 'ROAD_ACCIDENTS':
+      return 'Sinistri stradali';
     case 'DOCUMENT':
       return 'Documenti flotta';
     case 'WAREHOUSE':
@@ -236,7 +268,20 @@ export function getCostCenterTotals(rows: CostCenterRow[]) {
 }
 
 export async function getCostCenterRows(): Promise<CostCenterRow[]> {
-  const [trips, containerTrips, fuelEntries, tollEntries, leaseInstallments, expenseLines, maintenances, documents, warehouseItems, warehouseMovements] = await Promise.all([
+  const [
+    trips,
+    containerTrips,
+    fuelEntries,
+    tollEntries,
+    leaseInstallments,
+    expenseLines,
+    maintenances,
+    fines,
+    roadAccidents,
+    documents,
+    warehouseItems,
+    warehouseMovements
+  ] = await Promise.all([
     prisma.trip.findMany({
       where: {
         status: { not: TripStatus.CANCELLED },
@@ -300,6 +345,26 @@ export async function getCostCenterRows(): Promise<CostCenterRow[]> {
       where: { migratedToExpense: false, amountCents: { not: null }, status: { not: MaintenanceStatus.ARCHIVED } },
       include: { category: true, supplier: true, tractor: true, trailer: true },
       orderBy: [{ maintenanceDate: 'desc' }]
+    }),
+    prisma.roadFine.findMany({
+      where: {
+        status: { in: [RoadFineStatus.PAID, RoadFineStatus.CLOSED] },
+        paidAmountCents: { gt: 0 },
+        paymentDate: { not: null }
+      },
+      include: { tractor: true, trailer: true, driver: true },
+      orderBy: [{ paymentDate: 'desc' }, { violationDate: 'desc' }]
+    }),
+    prisma.roadAccident.findMany({
+      where: {
+        status: { not: RoadAccidentStatus.CANCELLED },
+        OR: [
+          { directCostCents: { gt: 0 }, directCostDate: { not: null } },
+          { reimbursementCents: { gt: 0 }, reimbursementDate: { not: null } }
+        ]
+      },
+      include: { tractor: true, trailer: true, driver: true },
+      orderBy: [{ accidentDate: 'desc' }]
     }),
     prisma.document.findMany({
       where: { amountCents: { gt: 0 } },
@@ -619,6 +684,65 @@ export async function getCostCenterRows(): Promise<CostCenterRow[]> {
       href: `/maintenances/${maintenance.id}`,
       isInternalAllocation: false
     });
+  }
+
+  for (const fine of fines) {
+    const movement = getRoadFineAccountingMovement(fine);
+    if (!movement) continue;
+    const driverName = fine.driver ? `${fine.driver.lastName} ${fine.driver.firstName}`.trim() : null;
+    rows.push({
+      key: `fine-${fine.id}`,
+      id: fine.id,
+      source: 'FINES',
+      sourceLabel: getCostSourceLabel('FINES'),
+      direction: 'COST',
+      categoryName: 'Sanzioni e verbali',
+      date: movement.date,
+      description: [fine.violationCode || 'Verbale stradale', fine.location, driverName].filter(Boolean).join(' · '),
+      entityLabel: vehicleLabel({ tractor: fine.tractor, trailer: fine.trailer }),
+      plate: fine.tractor?.plate || fine.trailer?.plate || null,
+      tractorId: fine.tractorId,
+      trailerId: fine.trailerId,
+      supplierName: fine.authority,
+      reference: fine.noticeNumber || fine.paymentReference,
+      netAmountCents: movement.amountCents,
+      vatAmountCents: 0,
+      grossAmountCents: movement.amountCents,
+      statusLabel: getRoadFineStatusLabel(fine.status),
+      href: `/fines/${fine.id}`,
+      isInternalAllocation: false
+    });
+  }
+
+  for (const accident of roadAccidents) {
+    const common = {
+      source: 'ROAD_ACCIDENTS' as const,
+      sourceLabel: getCostSourceLabel('ROAD_ACCIDENTS'),
+      description: [accident.claimNumber ? `Pratica ${accident.claimNumber}` : 'Sinistro stradale', accident.location].join(' · '),
+      entityLabel: vehicleLabel({ tractor: accident.tractor, trailer: accident.trailer }),
+      plate: accident.tractor?.plate || accident.trailer?.plate || null,
+      tractorId: accident.tractorId,
+      trailerId: accident.trailerId,
+      supplierName: accident.insurerName,
+      reference: accident.claimNumber || null,
+      statusLabel: getRoadAccidentStatusLabel(accident.status),
+      href: `/road-accidents/${accident.id}`,
+      isInternalAllocation: false
+    };
+
+    for (const movement of getRoadAccidentAccountingMovements(accident)) {
+      rows.push({
+        ...common,
+        key: `road-accident-${movement.kind.toLocaleLowerCase('it-IT')}-${accident.id}`,
+        id: `${accident.id}-${movement.kind.toLocaleLowerCase('it-IT')}`,
+        direction: movement.direction,
+        categoryName: movement.kind === 'DIRECT_COST' ? 'Costo diretto sinistro' : 'Rimborso assicurativo',
+        date: movement.date,
+        netAmountCents: movement.amountCents,
+        vatAmountCents: 0,
+        grossAmountCents: movement.amountCents
+      });
+    }
   }
 
   for (const document of documents) {

@@ -5,11 +5,13 @@ import Link from 'next/link';
 import { ArrowRight, BriefcaseBusiness, FilePlus, Plus, Save, ShieldCheck, Trash2, Truck } from 'lucide-react';
 import { ConfirmSubmitButton } from '@/components/ConfirmSubmitButton';
 import { DatePartsInput } from '@/components/DatePartsInput';
+import { DocumentHistorySection } from '@/components/EntityDocumentSections';
 import { DocumentTable } from '@/components/DocumentTable';
+import { EntityRoadEventsPanel } from '@/components/EntityRoadEventsPanel';
 import { PageHeader } from '@/components/PageHeader';
 import { formatDate, toDateInputValue } from '@/lib/dates';
 import { prisma } from '@/lib/db';
-import { documentInclude } from '@/lib/documents';
+import { documentInclude, splitDocumentsByLifecycle } from '@/lib/documents';
 import {
   getDriverEmploymentEndReasonLabel,
   getDriverEmploymentPeriodStatus,
@@ -36,7 +38,7 @@ export default async function DriverDetailPage({ params, searchParams }: DriverD
   await requireUser();
   const { id } = await params;
   const query = await searchParams;
-  const [driver, documents, badgeDocumentType] = await Promise.all([
+  const [driver, documents, badgeDocumentType, roadFines, roadAccidents] = await Promise.all([
     prisma.driver.findUnique({
       where: { id },
       include: {
@@ -52,16 +54,29 @@ export default async function DriverDetailPage({ params, searchParams }: DriverD
       include: documentInclude,
       orderBy: { expiryDate: 'asc' }
     }),
-    prisma.documentType.findUnique({ where: { name: 'Badge portuale' } })
+    prisma.documentType.findUnique({ where: { name: 'Badge portuale' } }),
+    prisma.roadFine.findMany({
+      where: { driverId: id },
+      select: { id: true, violationDate: true, noticeNumber: true, authority: true, status: true },
+      orderBy: { violationDate: 'desc' }
+    }),
+    prisma.roadAccident.findMany({
+      where: { driverId: id },
+      select: { id: true, accidentDate: true, claimNumber: true, location: true, status: true },
+      orderBy: { accidentDate: 'desc' }
+    })
   ]);
   if (!driver) notFound();
 
+  // Anche qui i documenti sostituiti o archiviati escono dalle liste operative e
+  // finiscono in un blocco storico separato.
+  const { current: activeDocuments, historical: historicalDocuments } = splitDocumentsByLifecycle(documents);
   const badgeDocuments = badgeDocumentType
-    ? documents.filter((document) => document.documentTypeId === badgeDocumentType.id)
+    ? activeDocuments.filter((document) => document.documentTypeId === badgeDocumentType.id)
     : [];
   const ordinaryDocuments = badgeDocumentType
-    ? documents.filter((document) => document.documentTypeId !== badgeDocumentType.id)
-    : documents;
+    ? activeDocuments.filter((document) => document.documentTypeId !== badgeDocumentType.id)
+    : activeDocuments;
   const employmentSummary = getDriverEmploymentSummary(driver.employmentPeriods);
   const employmentSummaryLabel = getDriverEmploymentSummaryLabel(employmentSummary);
   const employmentSummaryClass = employmentSummary === 'EMPLOYED'
@@ -277,6 +292,10 @@ export default async function DriverDetailPage({ params, searchParams }: DriverD
           </div>
           <DocumentTable documents={badgeDocuments} emptyText="Nessun badge portuale inserito." />
         </section>
+      </div>
+      <div className="grid" style={{ marginTop: 18 }}>
+        <EntityRoadEventsPanel fines={roadFines} accidents={roadAccidents} />
+        <DocumentHistorySection documents={historicalDocuments} entityKey={`DRIVER:${driver.id}`} />
       </div>
     </>
   );

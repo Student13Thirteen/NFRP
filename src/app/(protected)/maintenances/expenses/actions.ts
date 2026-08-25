@@ -31,6 +31,7 @@ function revalidateExpenseViews() {
   revalidatePath('/warehouse');
   revalidatePath('/leases');
   revalidatePath('/costs');
+  revalidatePath('/road-accidents', 'layout');
 }
 
 function redirectWithError(path: string, message: string): never {

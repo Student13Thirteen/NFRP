@@ -3,6 +3,7 @@ import { ContainerTripStatus } from '@prisma/client';
 import Link from 'next/link';
 import { ArrowRight, Plus, Settings2, UploadCloud } from 'lucide-react';
 import { PageHeader } from '@/components/PageHeader';
+import { PageSizeField } from '@/components/PageSizeField';
 import { TablePagination } from '@/components/TablePagination';
 import {
   containerTripInclude,
@@ -13,12 +14,13 @@ import {
   getContainerTripActualKm,
   getContainerTripApprovedExtrasCents,
   getContainerTripCustomerLabel,
-  getContainerTripStatusLabel
+  getContainerTripStatusLabel,
+  getContainerTripVehicleLabel
 } from '@/lib/container-trips';
 import { formatDate } from '@/lib/dates';
 import { prisma } from '@/lib/db';
 import { paginateItems } from '@/lib/pagination';
-import { getDriverLabel, getVehicleLabel } from '@/lib/trips';
+import { getDriverLabel } from '@/lib/trips';
 
 type Props = {
   searchParams: Promise<{ q?: string; status?: string; page?: string; pageSize?: string }>;
@@ -96,6 +98,7 @@ export default async function ContainerTripsPage({ searchParams }: Props) {
       </section>
 
       <form className="filter-bar" action="/trips/container">
+        <PageSizeField pageSize={params.pageSize} />
         <label>
           Cerca
           <input name="q" defaultValue={params.q || ''} placeholder="LDV, committente, container, targa, booking, tappa" />
@@ -155,7 +158,19 @@ export default async function ContainerTripsPage({ searchParams }: Props) {
                   <td className="click-cell">
                     <Link className="table-cell-link" href={href}>
                       {getDriverLabel(trip.driver)}
-                      <div className="muted">{getVehicleLabel(trip.tractor)} · {getVehicleLabel(trip.trailer)}</div>
+                      <div className="muted">
+                        {getContainerTripVehicleLabel({
+                          vehicle: trip.tractor,
+                          externalPlate: trip.externalTractorPlate,
+                          externalOwnerName: trip.externalTractorOwner?.name || null
+                        })}
+                        {' · '}
+                        {getContainerTripVehicleLabel({
+                          vehicle: trip.trailer,
+                          externalPlate: trip.externalTrailerPlate,
+                          externalOwnerName: trip.externalTrailerOwner?.name || null
+                        })}
+                      </div>
                     </Link>
                   </td>
                   <td className="click-cell"><Link className="table-cell-link" href={href}>{getContainerTripActualKm(trip)?.toLocaleString('it-IT') || '-'}</Link></td>

@@ -15,14 +15,14 @@ import { buildMaintenanceCategoryOptions } from '@/lib/maintenance';
 import { createExpenseDocumentAction } from '../expenses/actions';
 
 type NewMaintenancePageProps = {
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ error?: string; roadAccidentId?: string }>;
 };
 
 export default async function NewMaintenancePage({ searchParams }: NewMaintenancePageProps) {
   await requireUser();
   const resolvedSearchParams = await searchParams;
   const today = toDateInputValue(new Date());
-  const [categories, suppliers, tractors, trailers, drivers, driverAssignments] = await Promise.all([
+  const [categories, suppliers, tractors, trailers, drivers, driverAssignments, roadAccidents] = await Promise.all([
     prisma.category.findMany({ where: { active: true }, orderBy: { name: 'asc' } }),
     prisma.supplier.findMany({ where: { active: true }, orderBy: { name: 'asc' } }),
     prisma.tractor.findMany({ where: { active: true }, orderBy: { plate: 'asc' } }),
@@ -31,12 +31,27 @@ export default async function NewMaintenancePage({ searchParams }: NewMaintenanc
     prisma.tractorDriverAssignment.findMany({
       include: { driver: { select: { firstName: true, lastName: true } } },
       orderBy: { validFrom: 'desc' }
+    }),
+    prisma.roadAccident.findMany({
+      where: { status: { not: 'CANCELLED' } },
+      orderBy: [{ accidentDate: 'desc' }, { createdAt: 'desc' }],
+      select: {
+        id: true,
+        accidentDate: true,
+        claimNumber: true,
+        location: true,
+        tractor: { select: { plate: true } },
+        trailer: { select: { plate: true } }
+      }
     })
   ]);
 
   const allocations = buildAllocationOptions(tractors, trailers);
   const categoryChoices = buildMaintenanceCategoryOptions(categories);
   const missingRegistry = categories.length === 0;
+  const selectedRoadAccidentId = roadAccidents.some((item) => item.id === resolvedSearchParams.roadAccidentId)
+    ? resolvedSearchParams.roadAccidentId
+    : '';
 
   return (
     <>
@@ -84,6 +99,20 @@ export default async function NewMaintenancePage({ searchParams }: NewMaintenanc
             <label>
               Numero documento
               <input name="documentNumber" placeholder="Fattura, DDT o riferimento interno" />
+            </label>
+            <label>
+              Sinistro collegato (opzionale)
+              <select name="roadAccidentId" defaultValue={selectedRoadAccidentId}>
+                <option value="">Nessun sinistro</option>
+                {roadAccidents.map((accident) => {
+                  const vehicle = accident.tractor?.plate || accident.trailer?.plate;
+                  return (
+                    <option key={accident.id} value={accident.id}>
+                      {[toDateInputValue(accident.accidentDate), vehicle, accident.claimNumber || accident.location].filter(Boolean).join(' · ')}
+                    </option>
+                  );
+                })}
+              </select>
             </label>
           </div>
 

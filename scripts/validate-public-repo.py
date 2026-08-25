@@ -11,7 +11,7 @@ REQUIRED = [
     'README.md', 'LICENSE', 'SECURITY.md', '.env.example', 'docker-compose.yml',
     'nfrp', 'examples/tolls/demo-tolls.csv', 'docs/SETUP.md', 'docs/DEMO.md',
     'docs/BRANDING.md', 'src/app/api/health/route.ts', 'scripts/ci_smoke.sh',
-    'scripts/smoke-login.py'
+    'scripts/smoke-login.py', 'scripts/test-quickstart.sh'
 ]
 IGNORED_PATH_PARTS = {'.git'}
 FORBIDDEN_PATH_PARTS = {'.env', 'node_modules', '.next', 'uploads', 'backups', 'pb_data', '__pycache__'}

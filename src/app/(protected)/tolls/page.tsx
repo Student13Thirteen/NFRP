@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { AlertTriangle, ArrowRight, CreditCard, Download, Filter, UploadCloud } from 'lucide-react';
 import { FilteredReportButton } from '@/components/FilteredReportButton';
 import { PageHeader } from '@/components/PageHeader';
+import { PageSizeField } from '@/components/PageSizeField';
 import { TablePagination } from '@/components/TablePagination';
 import { formatDate } from '@/lib/dates';
 import { paginateItems } from '@/lib/pagination';
@@ -137,6 +138,7 @@ export default async function TollsPage({ searchParams }: TollsPageProps) {
       ) : null}
 
       <form className="filter-bar toll-batch-filter" action="/tolls">
+        <PageSizeField pageSize={resolvedSearchParams.pageSize} />
         <label>
           Cerca
           <input name="q" placeholder="Numero fattura, file, fornitore" defaultValue={resolvedSearchParams.q || ''} />

@@ -75,6 +75,7 @@ function AppNavigationContent({ branding, queueCounts, userEmail, pathname }: Ap
       <Link
         href={item.href}
         key={item.href}
+        prefetch={false}
         className={active ? 'is-active' : undefined}
         aria-current={active ? 'page' : undefined}
         onClick={() => {

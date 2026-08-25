@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { AlertTriangle, CheckCircle2, Info, X } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, CircleAlert, Info, X } from 'lucide-react';
 import type { FlashMessagePayload } from '@/lib/flash';
 import { MANAGED_IMPORT_NOTICE_KEY } from '@/lib/managed-import';
 
@@ -12,6 +12,7 @@ type FlashMessageProps = {
 const icons = {
   success: CheckCircle2,
   info: Info,
+  warning: CircleAlert,
   error: AlertTriangle
 };
 
@@ -29,7 +30,7 @@ export function FlashMessage({ flash }: FlashMessageProps) {
       if (stored) {
         const parsed = JSON.parse(stored) as Partial<FlashMessagePayload>;
         if (
-          (parsed.type === 'success' || parsed.type === 'info' || parsed.type === 'error') &&
+          (parsed.type === 'success' || parsed.type === 'info' || parsed.type === 'warning' || parsed.type === 'error') &&
           typeof parsed.title === 'string' &&
           (parsed.message === undefined || typeof parsed.message === 'string')
         ) {

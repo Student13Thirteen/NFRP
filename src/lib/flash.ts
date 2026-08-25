@@ -6,7 +6,7 @@ import { shouldUseSecureCookies } from '@/lib/env';
 export const FLASH_COOKIE_NAME = 'nfrp_portfolio_flash';
 
 export type FlashMessagePayload = {
-  type: 'success' | 'info' | 'error';
+  type: 'success' | 'info' | 'warning' | 'error';
   title: string;
   message?: string;
   createdAt: number;
@@ -34,7 +34,7 @@ export async function getFlashMessage(): Promise<FlashMessagePayload | null> {
 
   try {
     const payload = JSON.parse(decodeURIComponent(value)) as Partial<FlashMessagePayload>;
-    if (payload.type !== 'success' && payload.type !== 'info' && payload.type !== 'error') return null;
+    if (payload.type !== 'success' && payload.type !== 'info' && payload.type !== 'warning' && payload.type !== 'error') return null;
     if (!payload.title || typeof payload.title !== 'string') return null;
 
     return {

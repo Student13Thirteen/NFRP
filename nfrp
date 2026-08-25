@@ -21,6 +21,7 @@ usage() {
 NFRP
 
 Usage:
+  bash nfrp quickstart         local demo with safe defaults, no prompts or tunnel
   bash nfrp setup              guided first installation
   bash nfrp start              start or reconcile the stack
   bash nfrp stop               stop containers, preserve data
@@ -144,13 +145,20 @@ wait_for_app() {
 }
 
 setup() {
+  local preset="${1:-guided}"
   require_docker
   umask 077
   mkdir -p "$BRANDING_DIR"
   chmod 755 "$BRANDING_DIR"
 
-  printf "%bNFRP guided setup%b\n" "$BOLD" "$RESET"
-  printf "Configure a branded operations platform without editing code.\n\n"
+  if [[ "$preset" == "quick" ]]; then
+    printf "%bNFRP local quickstart%b\n" "$BOLD" "$RESET"
+    printf "This creates an isolated local demo on this computer.\n"
+    printf "No server, domain, router configuration or Cloudflare Tunnel is required.\n\n"
+  else
+    printf "%bNFRP guided setup%b\n" "$BOLD" "$RESET"
+    printf "Configure a branded operations platform without editing code.\n\n"
+  fi
 
   if [[ -f "$ENV_FILE" ]]; then
     read -r -p ".env already exists. Replace it? [y/N] " answer
@@ -161,65 +169,90 @@ setup() {
   local company product subtitle admin_email admin_password db_password auth_secret
   local primary primary_dark sidebar accent logo_path logo_source="" mode_choice deployment_mode bind_address app_port public_url tunnel_token=""
 
-  company="$(read_default 'Company name' 'Demo Logistics S.r.l.')"
-  product="$(read_default 'Product name' 'NFRP')"
-  subtitle="$(read_default 'Interface subtitle' 'Operations Platform')"
+  if [[ "$preset" == "quick" ]]; then
+    company='Demo Logistics S.r.l.'
+    product='NFRP'
+    subtitle='Operations Platform'
+    admin_email='admin@example.com'
+    admin_password=''
+    primary='#1f6feb'
+    primary_dark='#185abc'
+    sidebar='#182230'
+    accent='#1d7f4f'
+    logo_path=''
+    deployment_mode='local'
+    bind_address='127.0.0.1'
+    app_port="${NFRP_QUICKSTART_PORT:-3000}"
+    [[ "$app_port" =~ ^[0-9]+$ ]] && (( app_port >= 1024 && app_port <= 65535 )) || die 'NFRP_QUICKSTART_PORT must be between 1024 and 65535.'
+    public_url="http://localhost:$app_port"
+  else
+    company="$(read_default 'Company name' 'Demo Logistics S.r.l.')"
+    product="$(read_default 'Product name' 'NFRP')"
+    subtitle="$(read_default 'Interface subtitle' 'Operations Platform')"
 
-  while true; do
-    admin_email="$(read_default 'Administrator email' 'admin@example.com')"
-    valid_email "$admin_email" && break
-    warn "Enter a valid email address."
-  done
+    while true; do
+      admin_email="$(read_default 'Administrator email' 'admin@example.com')"
+      valid_email "$admin_email" && break
+      warn "Enter a valid email address."
+    done
 
-  printf '\nChoose a color palette. Press Enter to keep the defaults.\n'
-  while true; do primary="$(read_default 'Primary color' '#1f6feb')"; valid_hex "$primary" && break; warn 'Use #RRGGBB.'; done
-  while true; do primary_dark="$(read_default 'Primary dark color' '#185abc')"; valid_hex "$primary_dark" && break; warn 'Use #RRGGBB.'; done
-  while true; do sidebar="$(read_default 'Sidebar color' '#182230')"; valid_hex "$sidebar" && break; warn 'Use #RRGGBB.'; done
-  while true; do accent="$(read_default 'Positive accent color' '#1d7f4f')"; valid_hex "$accent" && break; warn 'Use #RRGGBB.'; done
+    while true; do
+      read -r -s -p 'Administrator password (Enter to generate one): ' admin_password
+      printf '\n' >&2
+      [[ -z "$admin_password" || ${#admin_password} -ge 12 ]] && break
+      warn 'Use at least 12 characters, or press Enter to generate a strong password.'
+    done
 
-  read -r -p 'Optional logo path (PNG/JPG/WebP, Enter to skip): ' logo_path
-  if [[ -n "$logo_path" ]]; then
-    [[ -f "$logo_path" ]] || die "Logo file not found: $logo_path"
-    case "${logo_path,,}" in
-      *.png) logo_source="$BRANDING_DIR/company-logo.png" ;;
-      *.jpg|*.jpeg) logo_source="$BRANDING_DIR/company-logo.jpg" ;;
-      *.webp) logo_source="$BRANDING_DIR/company-logo.webp" ;;
-      *) die 'Logo must be PNG, JPG or WebP.' ;;
+    printf '\nChoose a color palette. Press Enter to keep the defaults.\n'
+    while true; do primary="$(read_default 'Primary color' '#1f6feb')"; valid_hex "$primary" && break; warn 'Use #RRGGBB.'; done
+    while true; do primary_dark="$(read_default 'Primary dark color' '#185abc')"; valid_hex "$primary_dark" && break; warn 'Use #RRGGBB.'; done
+    while true; do sidebar="$(read_default 'Sidebar color' '#182230')"; valid_hex "$sidebar" && break; warn 'Use #RRGGBB.'; done
+    while true; do accent="$(read_default 'Positive accent color' '#1d7f4f')"; valid_hex "$accent" && break; warn 'Use #RRGGBB.'; done
+
+    read -r -p 'Optional logo path (PNG/JPG/WebP, Enter to skip): ' logo_path
+    if [[ -n "$logo_path" ]]; then
+      [[ -f "$logo_path" ]] || die "Logo file not found: $logo_path"
+      case "${logo_path,,}" in
+        *.png) logo_source="$BRANDING_DIR/company-logo.png" ;;
+        *.jpg|*.jpeg) logo_source="$BRANDING_DIR/company-logo.jpg" ;;
+        *.webp) logo_source="$BRANDING_DIR/company-logo.webp" ;;
+        *) die 'Logo must be PNG, JPG or WebP.' ;;
+      esac
+      rm -f "$BRANDING_DIR"/company-logo.{png,jpg,webp} 2>/dev/null || true
+      cp "$logo_path" "$logo_source"
+      # The logo is public UI content; the unprivileged container user must be able to read it.
+      chmod 644 "$logo_source"
+      logo_source="/bootstrap-branding/$(basename "$logo_source")"
+    fi
+
+    printf '\nAccess mode:\n  1) this computer only\n  2) local network / reverse proxy\n  3) Cloudflare Tunnel (administrator option)\n'
+    read -r -p 'Choose [1]: ' mode_choice
+    case "${mode_choice:-1}" in
+      1) deployment_mode=local; bind_address=127.0.0.1 ;;
+      2) deployment_mode=lan; bind_address=0.0.0.0 ;;
+      3) deployment_mode=remote; bind_address=127.0.0.1 ;;
+      *) die 'Choose 1, 2 or 3.' ;;
     esac
-    rm -f "$BRANDING_DIR"/company-logo.{png,jpg,webp} 2>/dev/null || true
-    cp "$logo_path" "$logo_source"
-    # The logo is public UI content; the unprivileged container user must be able to read it.
-    chmod 644 "$logo_source"
-    logo_source="/bootstrap-branding/$(basename "$logo_source")"
+
+    app_port="$(read_default 'HTTP port' '3000')"
+    [[ "$app_port" =~ ^[0-9]+$ ]] && (( app_port >= 1024 && app_port <= 65535 )) || die 'Port must be between 1024 and 65535.'
+
+    case "$deployment_mode" in
+      local) public_url="http://localhost:$app_port" ;;
+      lan)
+        public_url="$(read_default 'Public or LAN URL' "http://localhost:$app_port")"
+        ;;
+      remote)
+        local hostname
+        while true; do hostname="$(read_default 'Cloudflare public hostname' 'nfrp.example.com')"; valid_hostname "$hostname" && break; warn 'Enter a hostname without https://.'; done
+        public_url="https://$hostname"
+        printf '\nCreate a remotely managed Cloudflare Tunnel and route its Public Hostname to:\n  http://app:3000\n\n'
+        tunnel_token="$(read_secret_required 'Cloudflare tunnel token')"
+        ;;
+    esac
   fi
 
-  printf '\nAccess mode:\n  1) this server only\n  2) local network / reverse proxy\n  3) Cloudflare Tunnel\n'
-  read -r -p 'Choose [1]: ' mode_choice
-  case "${mode_choice:-1}" in
-    1) deployment_mode=local; bind_address=127.0.0.1 ;;
-    2) deployment_mode=lan; bind_address=0.0.0.0 ;;
-    3) deployment_mode=remote; bind_address=127.0.0.1 ;;
-    *) die 'Choose 1, 2 or 3.' ;;
-  esac
-
-  app_port="$(read_default 'HTTP port' '3000')"
-  [[ "$app_port" =~ ^[0-9]+$ ]] && (( app_port >= 1024 && app_port <= 65535 )) || die 'Port must be between 1024 and 65535.'
-
-  case "$deployment_mode" in
-    local) public_url="http://localhost:$app_port" ;;
-    lan)
-      public_url="$(read_default 'Public or LAN URL' "http://localhost:$app_port")"
-      ;;
-    remote)
-      local hostname
-      while true; do hostname="$(read_default 'Cloudflare public hostname' 'nfrp.example.com')"; valid_hostname "$hostname" && break; warn 'Enter a hostname without https://.'; done
-      public_url="https://$hostname"
-      printf '\nCreate a remotely managed Cloudflare Tunnel and route its Public Hostname to:\n  http://app:3000\n\n'
-      tunnel_token="$(read_secret_required 'Cloudflare tunnel token')"
-      ;;
-  esac
-
-  admin_password="$(random_secret)"
+  [[ -n "$admin_password" ]] || admin_password="$(random_secret)"
   db_password="$(random_secret)"
   auth_secret="$(random_secret)$(random_secret)"
 
@@ -294,6 +327,11 @@ ENV
   printf 'Next: bash nfrp doctor && bash nfrp demo\n'
 }
 
+quickstart() {
+  [[ ! -f "$ENV_FILE" ]] || die "An installation already exists. Use: bash nfrp start"
+  setup quick
+}
+
 start() { require_docker; load_env; compose config --quiet; compose up -d --build --remove-orphans; wait_for_app 90; ok "NFRP started: $APP_PUBLIC_URL"; }
 stop() { require_docker; [[ -f "$ENV_FILE" ]] && load_env || true; compose down; ok 'NFRP stopped. Persistent volumes were preserved.'; }
 status() { require_docker; [[ -f "$ENV_FILE" ]] && load_env || true; compose ps; }
@@ -362,11 +400,13 @@ demo() {
   printf '5. Review PENDING rows, upload it again to show deduplication, then confirm.\n'
   printf '6. Open Pedaggi and Centro costi to verify the result.\n'
   printf '7. Open Impostazioni → Identità aziendale to change name, logo and palette live.\n'
+  printf '8. Open Verbali and Sinistri stradali to inspect the synthetic control records.\n'
 }
 
 main() {
   cd "$ROOT_DIR"
   case "${1:-help}" in
+    quickstart|quick-start) quickstart ;;
     setup) setup ;;
     start|up) start ;;
     stop|down) stop ;;

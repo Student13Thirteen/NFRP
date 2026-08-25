@@ -5,6 +5,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { Search, X } from 'lucide-react';
 import { EntitySelect } from '@/components/EntitySelect';
 import type { EntityOption } from '@/lib/entities';
+import { DEFAULT_PAGE_SIZE, getPageSizeOption } from '@/lib/pagination';
 
 type DocumentTypeOption = {
   id: string;
@@ -24,6 +25,7 @@ type DocumentFiltersProps = {
   documentTypes: DocumentTypeOption[];
   entityOptions: EntityOption[];
   initialFilters: Partial<FilterState>;
+  pageSize?: string;
   resultCount?: number;
   statusOptions?: { value: string; label: string }[];
   vehicleStatusOptions?: { value: string; label: string }[];
@@ -65,6 +67,7 @@ export function DocumentFilters({
   documentTypes,
   entityOptions,
   initialFilters,
+  pageSize,
   resultCount,
   statusOptions = defaultStatusOptions,
   vehicleStatusOptions
@@ -73,6 +76,7 @@ export function DocumentFilters({
   const pathname = usePathname();
   const [filters, setFilters] = useState<FilterState>(() => normalizeInitialFilters(initialFilters));
   const didMount = useRef(false);
+  const selectedPageSize = getPageSizeOption(pageSize);
 
   const applyFilters = useCallback((nextFilters: FilterState) => {
     const params = new URLSearchParams();
@@ -83,10 +87,11 @@ export function DocumentFilters({
     if (nextFilters.status) params.set('status', nextFilters.status);
     if (nextFilters.pdf) params.set('pdf', nextFilters.pdf);
     if (nextFilters.vehicleStatus) params.set('vehicleStatus', nextFilters.vehicleStatus);
+    if (selectedPageSize !== String(DEFAULT_PAGE_SIZE)) params.set('pageSize', selectedPageSize);
 
     const query = params.toString();
     router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
-  }, [pathname, router]);
+  }, [pathname, router, selectedPageSize]);
 
   function updateFilter<Key extends keyof FilterState>(key: Key, value: FilterState[Key]) {
     setFilters((current) => ({ ...current, [key]: value }));

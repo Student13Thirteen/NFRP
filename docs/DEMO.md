@@ -2,6 +2,8 @@
 
 Ten minutes, no real data. The only file involved is `examples/tolls/demo-tolls.csv`, which contains invented rows. Print the same list in a terminal with `bash nfrp demo`.
 
+If NFRP is not installed yet, use `bash nfrp quickstart`: it runs the actual application locally and needs no server or tunnel.
+
 ## Before you start
 
 ```bash
@@ -51,6 +53,10 @@ Open **Documenti → Nuovo documento**, attach an expiry a few days away to trac
 
 Open **Impostazioni → Identità aziendale** and change the company name, the logo or a colour. The interface updates without a code change.
 
+## 10. Show road control records
+
+Open **Verbali**, then **Sinistri stradali**. The synthetic seed contains one invented record in each register. Open their detail pages to show links to vehicle/driver, status and deadlines, monetary fields and protected attachments.
+
 ## What to avoid during a demo
 
-Do not upload real company documents, and do not present the static product tour as the running application: the tour is a browser preview, the installation is the product.
+Do not upload real company documents. There is no static substitute presented as a live demo: the locally installed, database-backed application is the product.

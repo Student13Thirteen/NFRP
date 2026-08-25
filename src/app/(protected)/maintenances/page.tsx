@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { ArrowRight, Download, FileUp, Search, Settings2, Wrench } from 'lucide-react';
 import { FilteredReportButton } from '@/components/FilteredReportButton';
 import { PageHeader } from '@/components/PageHeader';
+import { PageSizeField } from '@/components/PageSizeField';
 import { TablePagination } from '@/components/TablePagination';
 import { formatDate } from '@/lib/dates';
 import { prisma } from '@/lib/db';
@@ -138,6 +139,7 @@ export default async function MaintenancesPage({ searchParams }: MaintenancesPag
       </div>
 
       <form className="filter-bar" action="/maintenances">
+        <PageSizeField pageSize={resolvedSearchParams.pageSize} />
         <label>
           Cerca
           <input name="q" placeholder="Targa, fornitore, lavoro, ricambio, documento" defaultValue={filters.q} />

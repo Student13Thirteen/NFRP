@@ -1,4 +1,4 @@
-import { PrismaClient, EntityType } from '@prisma/client';
+import { EntityType, MotorVehicleType, PrismaClient, TrailerBodyType } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 import { copyFile, mkdir, stat } from 'node:fs/promises';
 import path from 'node:path';
@@ -99,9 +99,10 @@ async function main() {
 
     const seedTractor = await prisma.tractor.upsert({
       where: { plate: 'AB123CD' },
-      update: {},
+      update: { vehicleType: MotorVehicleType.TRACTOR_UNIT },
       create: {
         plate: 'AB123CD',
+        vehicleType: MotorVehicleType.TRACTOR_UNIT,
         brand: 'Volvo',
         model: 'FH',
         notes: 'Dato dimostrativo'
@@ -146,12 +147,70 @@ async function main() {
 
     await prisma.trailer.upsert({
       where: { plate: 'TR456EF' },
-      update: {},
+      update: { bodyType: TrailerBodyType.CONTAINER, tankCargo: null },
       create: {
         plate: 'TR456EF',
+        bodyType: TrailerBodyType.CONTAINER,
         brand: 'Schmitz',
         model: 'Container',
         notes: 'Dato dimostrativo'
+      }
+    });
+
+    await prisma.vehicleOwner.upsert({
+      where: { name: 'Trasporti Demo Partner S.r.l.' },
+      update: { active: true },
+      create: {
+        name: 'Trasporti Demo Partner S.r.l.',
+        vatNumber: '01122334455',
+        phone: '+39 02 0000000',
+        notes: 'Proprietario di mezzi terzi esclusivamente dimostrativo'
+      }
+    });
+
+    await prisma.roadFine.upsert({
+      where: { id: 'seed-road-fine-1' },
+      update: {},
+      create: {
+        id: 'seed-road-fine-1',
+        status: 'TO_PAY',
+        responsibility: 'COMPANY',
+        noticeNumber: 'DEMO-VERBALE-001',
+        authority: 'Polizia Locale Demo',
+        violationDate: new Date('2026-08-05'),
+        notificationDate: new Date('2026-08-12'),
+        location: 'Via Esempio 20, Milano',
+        violationCode: 'DEMO',
+        description: 'Verbale esclusivamente dimostrativo',
+        tractorId: seedTractor.id,
+        driverId: 'seed-driver-1',
+        reducedAmountCents: 8700,
+        paymentDueDate: new Date('2026-09-10'),
+        notes: 'Nessun riferimento a persone, aziende o fatti reali'
+      }
+    });
+
+    await prisma.roadAccident.upsert({
+      where: { id: 'seed-road-accident-1' },
+      update: {},
+      create: {
+        id: 'seed-road-accident-1',
+        status: 'CLAIM_OPEN',
+        responsibility: 'TO_ASSESS',
+        accidentDate: new Date('2026-08-08'),
+        location: 'Area logistica dimostrativa',
+        description: 'Sinistro esclusivamente dimostrativo, senza persone coinvolte',
+        tractorId: seedTractor.id,
+        driverId: 'seed-driver-1',
+        insurerName: 'Assicurazioni Demo S.p.A.',
+        policyNumber: 'POL-DEMO-001',
+        claimNumber: 'SIN-DEMO-001',
+        reportedDate: new Date('2026-08-09'),
+        nextDeadline: new Date('2026-09-15'),
+        estimatedDamageCents: 150000,
+        directCostCents: 30000,
+        directCostDate: new Date('2026-08-10'),
+        notes: 'Nessun riferimento a persone, aziende o fatti reali'
       }
     });
 

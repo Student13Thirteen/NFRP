@@ -1,23 +1,33 @@
 # NFRP
 
-**A self-hosted transport operations platform: documents and expiries, OCR-assisted imports, trips, fuel, tolls, maintenance, warehouse and cost control.**
+**A production-shaped transport ERP and public portfolio project: documents and expiries, OCR-assisted imports, trips, fleet, fuel, tolls, maintenance, fines, road accidents, warehouse and cost control.**
 
 [![Validate](https://github.com/Student13Thirteen/NFRP/actions/workflows/ci.yml/badge.svg)](https://github.com/Student13Thirteen/NFRP/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-2563eb.svg)](LICENSE)
 
-NFRP turns PDFs, scans and exported files into proposals that a person checks before they become business records.
+NFRP turns PDFs, scans and exported files into proposals that a person checks before they become business records. It is a real Next.js/PostgreSQL application, not a static UI mock-up: this repository contains its data model, 36 additive migrations, authenticated workflows, local OCR, tests, Docker deployment and clean-room installation check.
 
 ```text
 upload or import → extract → check → human review → confirm → operational record
 ```
 
-**Automation proposes. A person confirms.** Nothing reaches your costs or reports until you say so.
+**Automation proposes. A person confirms.** Drafts and rejected proposals stay outside costs and reports.
 
-This page is the complete guide: install it, try it with the included demo data, then use it day by day. No prior experience with servers is assumed — every command is meant to be copied exactly as written.
+This public edition mirrors the functional transport workflows of a working private ERP while replacing company data, credentials, provider-specific fixtures and branding with synthetic equivalents. The architecture and operational rules remain inspectable end to end.
+
+## Why this project is technically meaningful
+
+- **Human-in-the-loop document intelligence:** upload, extraction, confidence/review, validation and explicit commit are separate stages.
+- **Operational accounting safety:** imports are designed to be idempotent and incomplete data never becomes authoritative silently.
+- **Real domain boundaries:** container trips and fuel-delivery trips stay distinct while shared files, documents, review queues and reporting are reused.
+- **Production-oriented delivery:** strict TypeScript, Prisma/PostgreSQL, protected file routes, health checks, Docker Compose, synthetic seed data and an authenticated clean-room smoke test.
+- **Configurable identity:** company name, logo and accessible palette are runtime settings, not a customer-specific source-code fork.
+
+This README is both the product overview and the runnable guide. You can open the real application locally without configuring a server, domain or Cloudflare Tunnel.
 
 **Contents**
 
-1. [See it before installing](#1-see-it-before-installing)
+1. [Try the real application locally](#1-try-the-real-application-locally)
 2. [Install it](#2-install-it)
 3. [First sign-in](#3-first-sign-in)
 4. [Guided demo, ten minutes](#4-guided-demo-ten-minutes)
@@ -32,11 +42,21 @@ This page is the complete guide: install it, try it with the included demo data,
 
 ---
 
-## 1. See it before installing
+## 1. Try the real application locally
 
-Open the [interactive product tour](https://student13thirteen.github.io/NFRP/). It runs entirely in the browser with invented data and takes about a minute.
+The recommended evaluation path runs the complete application on your own computer with synthetic data:
 
-The tour is a preview of the workflow, not the real application: it does not run OCR or a database. The real product needs the installation below.
+```bash
+git clone https://github.com/Student13Thirteen/NFRP.git
+cd NFRP
+bash nfrp quickstart
+```
+
+`quickstart` generates private local credentials, builds the application and PostgreSQL containers, applies every migration, loads invented demo records and waits for the health check. It binds only to `127.0.0.1`, so it does **not** require a server, public IP, domain, router changes or Cloudflare.
+
+When it finishes, open `http://localhost:3000` and use the credentials printed in the terminal. Print them again at any time with `bash nfrp credentials`.
+
+The first build downloads the required images and can take several minutes. Docker must remain running while you use NFRP.
 
 ---
 
@@ -44,10 +64,10 @@ The tour is a preview of the workflow, not the real application: it does not run
 
 ### 2.1 What you need
 
-- a Linux server, or any Linux computer you can leave running;
-- at least 4 GB of RAM;
-- an internet connection during installation;
-- Docker Engine, Docker Compose v2 and Git.
+- Windows 11 with Docker Desktop and WSL 2, macOS with Docker Desktop, or Linux with Docker Engine;
+- at least 4 GB of RAM available to Docker;
+- an internet connection during the first build;
+- Docker Compose v2, Git and a Bash terminal.
 
 You do **not** need Node.js, PostgreSQL or OCR tools on the machine. Docker brings them.
 
@@ -59,7 +79,7 @@ docker compose version
 git --version
 ```
 
-Each line must print a version number. If `docker` answers with a permission error, ask whoever administers the machine to add your user to the Docker group. Never fix it by loosening file permissions.
+On Windows, run the commands from an Ubuntu/WSL 2 terminal with Docker Desktop integration enabled. On Linux, if `docker` answers with a permission error, follow Docker's documented non-root setup; never fix it by loosening file permissions.
 
 ### 2.2 Download the project
 
@@ -70,34 +90,29 @@ cd NFRP
 
 Every command in this guide runs from that `NFRP` folder.
 
-### 2.3 Run the guided installer
+### 2.3 Choose the installation path
+
+For an immediate local evaluation:
+
+```bash
+bash nfrp quickstart
+```
+
+For a customized installation, run the guided installer instead:
 
 ```bash
 bash nfrp setup
 ```
 
-The installer asks a short list of questions. If you are only trying the product, these answers are safe:
+The guided installer asks for company identity, administrator email and initial password, palette, optional logo and access mode. The password is hidden while you type it; leave it empty if you prefer a generated strong password. Choose access mode `1` unless you already administer the target network: the application remains local to this computer and no tunnel is started.
 
-| Question | Safe first answer | Why |
-|---|---|---|
-| Company name | Press Enter | Uses the demo name; you can change it later from the app |
-| Product name | Press Enter | Keeps `NFRP` in the sidebar |
-| Interface subtitle | Press Enter | Optional line under the product name |
-| Administrator email | An address you will remember | It becomes your login |
-| Colors (four questions) | Press Enter each time | Accessible defaults; changeable later |
-| Logo file | Press Enter | Skips the logo; you can upload one later |
-| Access mode | `1` | Binds to this machine only: the safest start |
-| Port | Press Enter | Uses `3000`; pick another number if it is taken |
-
-The first build takes several minutes. Do not close the terminal.
-
-What the installer does for you: it generates private secrets, builds the containers, creates the database, applies **every migration**, loads synthetic demo records, waits until the application answers as healthy, and finally prints the address, the administrator email and a generated password.
+Both paths generate the remaining private secrets, build the containers, create the database, apply **every migration**, load synthetic demo records, wait until the application answers as healthy, and finally print the address, administrator email and initial password.
 
 A successful run ends with `Setup complete` and three values:
 
 ```text
 URL:      http://localhost:3000
-Email:    you@example.com
+Email:    admin@example.com
 Password: (generated)
 ```
 
@@ -124,10 +139,12 @@ The installation creates invented records so nothing looks empty on the first da
 |---|---|
 | Drivers | `Mario Rossi`, `Luca Bianchi` |
 | Vehicles | Tractor `AB123CD`, trailer `TR456EF` |
+| External owner | `Trasporti Demo Partner S.r.l.` |
 | Customer | `Cliente Demo S.r.l.` |
 | Supplier | `Officina Demo S.r.l.` |
 | Category | `Lavaggio` |
 | Document types | Insurance, roadworthiness test, tachograph and more |
+| Control records | One invented road fine and one invented road accident |
 
 All of it is fictional. Delete it whenever you want, or keep it while you learn.
 
@@ -145,10 +162,13 @@ The interface speaks the language of an Italian transport office. Here is the ma
 | `Rifornimenti` | Fuel |
 | `Pedaggi` | Tolls |
 | `Leasing` | Leasing contracts and invoices |
+| `Sinistri stradali` | Accident files, deadlines, responsibility, costs and attachments |
+| `Verbali` | Road fines, payment state, deadlines, responsibility and attachments |
 | `Manutenzioni` | Maintenance, workshop invoices and delivery notes |
 | `Magazzino` | Warehouse and parts |
 | `Centro costi` | Cost center |
-| `Autisti`, `Trattori`, `Semirimorchi` | Drivers, tractors, trailers |
+| `Autisti`, `Mezzi a motore`, `Semirimorchi` | Drivers and classified fleet records |
+| `Proprietari terzi` | Owners of external tractors and trailers |
 | `Impostazioni → Identità aziendale` | Settings → company identity and branding |
 | `Da controllare` | Waiting for your check |
 | `Conferma` | Confirm: the moment a record becomes real |
@@ -215,9 +235,13 @@ Documents can also arrive as scans through **Acquisisci → Documenti flotta**, 
 
 Open **Impostazioni → Identità aziendale** and change the company name, the logo or a colour. The interface updates without touching the code.
 
+### Step 9 — Inspect traceable control records
+
+Open **Verbali** and **Sinistri stradali**. The synthetic seed includes one record in each register, linked to the demo tractor and driver. Open the detail pages to see status, deadlines, responsibility, costs and the protected attachment area.
+
 ### After the demo
 
-Everything you created is invented and can be deleted from each page. If you prefer to start over completely, reinstall on an empty database — see [Server setup](docs/SETUP.md).
+Everything you created is invented and can be deleted from each page. If you prefer to start over completely, reinstall on an empty database — see [Deployment and network setup](docs/SETUP.md).
 
 ---
 
@@ -237,11 +261,13 @@ A normal working day follows one loop: **acquire → check → confirm → read 
 | Read a maintenance PDF instead of typing it | `Manutenzioni → Importa manutenzioni da PDF` | Each page becomes one maintenance to check; handwritten plates are never guessed |
 | Fix a maintenance you already registered | Open it from `Manutenzioni` | Descriptions, notes and the PDF can be completed later; amounts and allocations stay closed |
 | Follow leasing | `Leasing` | Contracts, instalment plan as a forecast, and real invoices linked to the plate |
+| Manage road fines | `Verbali` | Payment state, responsibility, deadlines, amounts and authenticated attachments, linked to vehicle and driver |
+| Manage road accidents | `Sinistri stradali` | Claim state, insurer references, deadlines, damage/cost values and attachments, linked to fleet entities |
 | Manage parts and stock | `Magazzino` | Load parts, mount them on a vehicle, and see the movement history |
 | Plan and close trips | `Viaggi` | Two separate flows: fuel deliveries and container transports, each with its own data |
 | Import container waybills | `Viaggi → Importa bolle container` | OCR proposes waybill, plate, customer, terminal and stops; the pending banner takes you to the review queue |
 | See where the money goes | `Centro costi` | Trips, fuel, tolls, leasing, maintenance, documents and warehouse together, with filters and a PDF report |
-| Keep registries in order | `Autisti`, `Trattori`, `Semirimorchi`, `Clienti` | People, vehicles and customers, with employment periods and dated driver-vehicle assignments |
+| Keep registries in order | `Autisti`, `Mezzi a motore`, `Semirimorchi`, `Proprietari terzi`, `Clienti` | People, vehicle classes, external ownership and customers, with employment periods and dated driver-vehicle assignments |
 | Ask a question in plain language | `NFRP Bot` | Optional, read-only, answers from your data — needs the Ollama integration |
 
 Two habits worth keeping:
@@ -269,6 +295,7 @@ Run them from the `NFRP` folder.
 
 | Command | What it does | Deletes data? |
 |---|---|---|
+| `bash nfrp quickstart` | Creates a new local demo with safe defaults; refuses to overwrite an existing `.env` | No |
 | `bash nfrp start` | Starts the app and every enabled optional service | No |
 | `bash nfrp stop` | Stops the containers, keeps the data | No |
 | `bash nfrp status` | Shows what is running and healthy | No |
@@ -300,7 +327,7 @@ bash nfrp logs app
 
 Read the last error and press `Ctrl+C` to stop watching. Do not delete volumes to "reset" it.
 
-**The port is already in use.** On a brand-new installation, run `bash nfrp setup` and choose another port, for example `3001`. On an existing installation, edit `APP_PORT` and `APP_PUBLIC_URL` in `.env`, then run `bash nfrp start` and `bash nfrp doctor`.
+**The port is already in use.** On a brand-new local demo, run `NFRP_QUICKSTART_PORT=3001 bash nfrp quickstart`. With the guided installer, choose another port when asked. On an existing installation, edit `APP_PORT` and `APP_PUBLIC_URL` in `.env`, then run `bash nfrp start` and `bash nfrp doctor`.
 
 **You lost the password.** Run `bash nfrp credentials`.
 
@@ -332,7 +359,7 @@ bash nfrp doctor
 
 ## 10. Optional extras
 
-The application works fully without any of these. Enable one at a time, and only after `bash nfrp doctor` passes.
+The local application works without any of these. They are optional administrator features, not requirements for trying NFRP. Enable one at a time, and only after `bash nfrp doctor` passes.
 
 - **Nextcloud** — mirrors new or changed PDFs through WebDAV and moves them when their status changes;
 - **Telegram** — sends scheduled expiry notifications;
@@ -341,7 +368,7 @@ The application works fully without any of these. Enable one at a time, and only
 
 Variables, commands and safety notes: [Optional integrations](docs/INTEGRATIONS.md).
 
-**Access modes**, chosen during setup: this server only (`127.0.0.1`), LAN or reverse proxy (`0.0.0.0`, protect the host with a firewall), or Cloudflare Tunnel. The PostgreSQL port is never published on the host. Details in [Server setup](docs/SETUP.md).
+**Access modes**, chosen only in the guided setup: local computer (`127.0.0.1`), LAN/reverse proxy (`0.0.0.0`, for administrators), or optional Cloudflare Tunnel. `quickstart` always chooses local access. PostgreSQL is never published on the host. Details in [Deployment and network setup](docs/SETUP.md).
 
 **Branding**: company name, product name, subtitle, logo and palette are configuration, not code. Change them during setup or later from `Impostazioni → Identità aziendale`. See [Branding](docs/BRANDING.md).
 
@@ -349,7 +376,7 @@ Variables, commands and safety notes: [Optional integrations](docs/INTEGRATIONS.
 
 ## 11. For developers
 
-Node.js 20 or later.
+Node.js 20 LTS for direct development. End users only need Docker.
 
 ```bash
 npm ci
@@ -377,14 +404,14 @@ Before using NFRP with real data, read [SECURITY.md](SECURITY.md). This is a sel
 
 | Document | When to read it |
 |---|---|
-| [Beginner guide](docs/BEGINNER_GUIDE.md) | You have never installed a server application |
-| [Server setup](docs/SETUP.md) | Network, cookies, reverse proxy, upgrades |
+| [Beginner guide](docs/BEGINNER_GUIDE.md) | You want to run the real application locally without administering a server |
+| [Deployment and network setup](docs/SETUP.md) | Local quickstart, network access, cookies, reverse proxy, upgrades |
 | [Demo script](docs/DEMO.md) | You need to show the product to someone |
 | [Optional integrations](docs/INTEGRATIONS.md) | Nextcloud, Telegram, Ollama, Cloudflare |
 | [Company branding](docs/BRANDING.md) | Name, logo, palette |
 | [Security model and limits](SECURITY.md) | Before real data |
 | [Product origin](docs/PRODUCT_ORIGIN.md) and [platform vision](docs/ERP_PLATFORM_VISION.md) | Where the project comes from and where it is going |
-| [Change history](docs/RELEASE_2026-08-19.md) | What changed in the latest synchronization, and what "parity with the operational edition" does and does not mean |
+| [Latest synchronization](docs/RELEASE_2026-08-25.md) | What changed, how it was verified and what public parity does and does not mean |
 
 NFRP is an AI-assisted, operator-directed project built around real operational requirements. It does not claim that every line was written by hand, nor that one configuration fits every company without review.
 

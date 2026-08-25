@@ -5,6 +5,7 @@ import {
   Bot,
   Boxes,
   Building2,
+  CarFront,
   CircleDollarSign,
   ClipboardList,
   FileText,
@@ -69,6 +70,8 @@ export const navigationGroups: NavigationGroup[] = [
       { href: '/fuel', label: 'Rifornimenti', icon: Fuel, badge: 'fuel' },
       { href: '/tolls', label: 'Pedaggi', icon: Route, badge: 'tolls' },
       { href: '/leases', label: 'Leasing', icon: Landmark, badge: 'leases' },
+      { href: '/road-accidents', label: 'Sinistri stradali', icon: CarFront },
+      { href: '/fines', label: 'Verbali', icon: FileText },
       { href: '/costs', label: 'Centro costi', icon: CircleDollarSign },
       { href: '/maintenances', label: 'Manutenzioni', icon: Wrench, badge: 'expenses' },
       { href: '/warehouse', label: 'Magazzino', icon: Boxes }
@@ -81,8 +84,9 @@ export const navigationGroups: NavigationGroup[] = [
     icon: Truck,
     items: [
       { href: '/drivers', label: 'Autisti', icon: UserRound },
-      { href: '/vehicles/tractors', label: 'Trattori', icon: Truck },
+      { href: '/vehicles/tractors', label: 'Mezzi a motore', icon: Truck },
       { href: '/vehicles/trailers', label: 'Semirimorchi', icon: Archive },
+      { href: '/vehicles/owners', label: 'Proprietari terzi', icon: Building2 },
       { href: '/others', label: 'Altre entita', icon: Warehouse }
     ]
   },

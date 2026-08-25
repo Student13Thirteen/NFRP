@@ -1,12 +1,12 @@
 # NFRP beginner guide
 
-This guide assumes you have never installed a business application before. Follow the steps in order. Copy each command exactly and wait for it to finish before running the next one.
+This guide assumes you have never installed a business application before. It runs the real NFRP application locally; you do not need to rent or configure a server.
 
-You do not need to install Node.js, PostgreSQL or OCR software on the server. Docker runs them for you.
+You do not need to install Node.js, PostgreSQL, OCR software, Cloudflare or a database. Docker runs the application components for you.
 
 ## What you need
 
-- a Linux server or Linux computer;
+- Windows 11 with Docker Desktop and WSL 2, macOS with Docker Desktop, or a Linux computer with Docker Engine;
 - at least 4 GB of RAM;
 - an internet connection during installation;
 - Docker Engine;
@@ -21,7 +21,7 @@ docker compose version
 git --version
 ```
 
-Each command must print a version. If `docker` reports a permission error, ask the server administrator to give your user access to Docker. Do not solve it by making application files public.
+Each command must print a version. On Windows, use an Ubuntu/WSL 2 terminal and enable its integration in Docker Desktop. On Linux, if `docker` reports a permission error, follow Docker's documented non-root setup. Do not solve it by making application files public.
 
 ## Install NFRP
 
@@ -34,24 +34,13 @@ cd NFRP
 
 Your terminal is now inside the NFRP folder. Run every command in this guide from that folder.
 
-### Step 2: start the guided installer
+### Step 2: start the local application
 
 ```bash
-bash nfrp setup
+bash nfrp quickstart
 ```
 
-The installer asks a few questions. If you are only testing NFRP, use these safe choices:
-
-| Question | Safe first choice |
-|---|---|
-| Company name | Press Enter to use the demo name |
-| Product name | Press Enter to use `NFRP` |
-| Interface subtitle | Press Enter |
-| Administrator email | Enter an email you will remember |
-| Colors | Press Enter for every color |
-| Logo path | Press Enter to skip it |
-| Access mode | Enter `1` |
-| HTTP port | Press Enter to use `3000` |
+There are no questions. `quickstart` chooses safe demo branding, generates credentials, binds the application only to this computer and never starts a tunnel. It also refuses to replace an installation that already has a `.env` file.
 
 The first build can take several minutes. Do not close the terminal while it is working. A successful installation ends with `Setup complete` and prints three values:
 
@@ -72,6 +61,8 @@ bash nfrp credentials
 ```
 
 Open the URL in a browser and sign in.
+
+If you later want to choose the name, colors, logo, administrator email/password, port or an administrator-managed network mode during installation, use `bash nfrp setup` on a new empty checkout. The password input is hidden and accepts at least 12 characters; leave it empty to generate one. You can also change branding from the application after quickstart.
 
 ## Try the product with safe demo data
 
@@ -154,7 +145,11 @@ Read the last error. Press `Ctrl+C` to stop watching the log. Do not delete volu
 
 ### Port 3000 is already in use
 
-Run `bash nfrp setup` only if this is a brand-new installation. Choose another port such as `3001` when asked.
+For a brand-new quickstart, choose another local port without opening the guided installer:
+
+```bash
+NFRP_QUICKSTART_PORT=3001 bash nfrp quickstart
+```
 
 For an existing installation, edit `APP_PORT` and `APP_PUBLIC_URL` in `.env`, then run:
 
@@ -183,7 +178,7 @@ Do not discard changes you do not recognize. Ask someone to review them before u
 
 ## Optional features come later
 
-Nextcloud, Telegram, Cloudflare Tunnel and the local assistant are not required for the first installation. First make sure `bash nfrp doctor` passes. Then enable one integration at a time by following [Optional integrations](INTEGRATIONS.md).
+Nextcloud, Telegram, Cloudflare Tunnel and the local assistant are not required for local use. Cloudflare is an administrator option for deliberately publishing a self-hosted instance, not an end-user setup step. First make sure `bash nfrp doctor` passes, then enable one integration at a time by following [Optional integrations](INTEGRATIONS.md).
 
 ## Never publish these files
 

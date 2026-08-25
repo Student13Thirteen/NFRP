@@ -1,6 +1,6 @@
 import { requireUser } from '@/lib/auth';
 import Link from 'next/link';
-import { ArrowRight, CircleCheckBig, Container, FilePlus, Fuel, Landmark, MapPinned, ReceiptText, Route, ScanLine, Warehouse, Wrench } from 'lucide-react';
+import { ArrowRight, CarFront, CircleCheckBig, Container, FilePlus, FileText, Fuel, Landmark, MapPinned, ReceiptText, Route, ScanLine, Warehouse, Wrench } from 'lucide-react';
 import { DocumentTable } from '@/components/DocumentTable';
 import { PageHeader } from '@/components/PageHeader';
 import { daysUntil } from '@/lib/dates';
@@ -14,7 +14,10 @@ import { getOperationalFleetDocumentWhere } from '@/lib/vehicle-lifecycle';
 
 export default async function DashboardPage() {
   await requireUser();
-  const [documents, documentQueue, tripQueue, fuelQueue, tollQueue, expenseQueue, leaseContractQueue, leaseInvoiceQueue, fuelWarnings, tollWarnings, tripsToBill, maintenanceToClose, stockWarnings] = await Promise.all([
+  const deadlineLimit = new Date();
+  deadlineLimit.setUTCHours(0, 0, 0, 0);
+  deadlineLimit.setUTCDate(deadlineLimit.getUTCDate() + 7);
+  const [documents, documentQueue, tripQueue, fuelQueue, tollQueue, expenseQueue, leaseContractQueue, leaseInvoiceQueue, fuelWarnings, tollWarnings, tripsToBill, maintenanceToClose, stockWarnings, fineWarnings, roadAccidentWarnings] = await Promise.all([
     prisma.document.findMany({
       where: getOperationalFleetDocumentWhere(),
       include: documentInclude,
@@ -31,7 +34,27 @@ export default async function DashboardPage() {
     prisma.tollEntry.count({ where: { status: 'NEEDS_REVIEW' } }),
     prisma.trip.count({ where: { billingStatus: 'TO_BILL', status: { not: 'CANCELLED' } } }),
     prisma.maintenance.count({ where: { status: { in: maintenanceToCloseStatuses } } }),
-    prisma.warehouseItem.count({ where: { status: { in: ['LOW_STOCK', 'OUT_OF_STOCK'] } } })
+    prisma.warehouseItem.count({ where: { status: { in: ['LOW_STOCK', 'OUT_OF_STOCK'] } } }),
+    prisma.roadFine.count({
+      where: {
+        status: { notIn: ['PAID', 'CANCELLED', 'CLOSED'] },
+        OR: [
+          { status: 'TO_REVIEW' },
+          { discountedPaymentDueDate: { lte: deadlineLimit } },
+          { paymentDueDate: { lte: deadlineLimit } },
+          { appealDueDate: { lte: deadlineLimit } }
+        ]
+      }
+    }),
+    prisma.roadAccident.count({
+      where: {
+        status: { notIn: ['CLOSED', 'CANCELLED'] },
+        OR: [
+          { status: { in: ['REPORTED', 'DOCUMENTS_PENDING'] } },
+          { nextDeadline: { lte: deadlineLimit } }
+        ]
+      }
+    })
   ]);
 
   const activeDocuments = documents.filter((document) => getDocumentVisualStatus(document) !== 'inactive');
@@ -105,6 +128,22 @@ export default async function DashboardPage() {
       value: stockWarnings,
       icon: Warehouse,
       tone: stockWarnings > 0 ? 'warning' : 'ok'
+    },
+    {
+      href: '/fines',
+      label: 'Verbali da gestire',
+      detail: 'Da controllare o con una scadenza entro 7 giorni',
+      value: fineWarnings,
+      icon: FileText,
+      tone: fineWarnings > 0 ? 'danger' : 'ok'
+    },
+    {
+      href: '/road-accidents',
+      label: 'Sinistri da seguire',
+      detail: 'Prime segnalazioni, documenti mancanti o scadenze vicine',
+      value: roadAccidentWarnings,
+      icon: CarFront,
+      tone: roadAccidentWarnings > 0 ? 'warning' : 'ok'
     }
   ];
   const attentionPriorities = priorities.filter((priority) => priority.value > 0);
@@ -169,6 +208,8 @@ export default async function DashboardPage() {
         <Link href="/maintenances"><Wrench size={17} aria-hidden /><span>Manutenzioni</span></Link>
         <Link href="/leases/import"><Landmark size={17} aria-hidden /><span>Importa leasing</span></Link>
         <Link href="/maintenances/new"><FilePlus size={17} aria-hidden /><span>Inserisci nuova manutenzione</span></Link>
+        <Link href="/fines/new"><FileText size={17} aria-hidden /><span>Nuovo verbale</span></Link>
+        <Link href="/road-accidents/new"><CarFront size={17} aria-hidden /><span>Nuovo sinistro</span></Link>
       </section>
 
       <div className="section-heading-inline">

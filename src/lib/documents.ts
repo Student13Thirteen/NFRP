@@ -1,5 +1,6 @@
 import { DocumentStatus, EntityType, type Document, type DocumentType, type Driver, type OtherEntity, type Tractor, type Trailer } from '@prisma/client';
 import { daysUntil, formatDate, formatExpiryDate } from '@/lib/dates';
+import { getMotorVehicleHeading } from '@/lib/vehicle-types';
 
 export type DocumentWithRelations = Document & {
   documentType: DocumentType;
@@ -84,12 +85,37 @@ export function documentMatchesPdfFilter(document: Pick<Document, 'filePath'>, p
   return true;
 }
 
+/**
+ * Un documento resta "corrente" finche non viene sostituito da un rinnovo o
+ * archiviato: uno scaduto non ancora rinnovato e ancora il documento in vigore
+ * e deve restare sotto gli occhi dell'operatore. Solo RENEWED e ARCHIVED sono
+ * storico.
+ */
+export function isHistoricalDocument(document: Pick<Document, 'status'>): boolean {
+  return document.status === DocumentStatus.RENEWED || document.status === DocumentStatus.ARCHIVED;
+}
+
+/** Separa i documenti di un'entita fra correnti e storico, conservando l'ordine. */
+export function splitDocumentsByLifecycle<T extends Pick<Document, 'status'>>(
+  documents: T[]
+): { current: T[]; historical: T[] } {
+  const current: T[] = [];
+  const historical: T[] = [];
+  for (const document of documents) {
+    if (isHistoricalDocument(document)) historical.push(document);
+    else current.push(document);
+  }
+  return { current, historical };
+}
+
 export function getEntityLabel(document: DocumentWithRelations): string {
   switch (document.entityType) {
     case EntityType.DRIVER:
       return document.driver ? `${document.driver.firstName} ${document.driver.lastName}` : 'Autista eliminato';
     case EntityType.TRACTOR:
-      return document.tractor ? `Trattore ${document.tractor.plate}` : 'Trattore eliminato';
+      // La tipologia rende l'elenco leggibile: un'autovettura non deve
+      // comparire come "Trattore" solo perche condivide l'anagrafica mezzi.
+      return document.tractor ? getMotorVehicleHeading(document.tractor) : 'Mezzo eliminato';
     case EntityType.TRAILER:
       return document.trailer ? `Semirimorchio ${document.trailer.plate}` : 'Semirimorchio eliminato';
     case EntityType.OTHER:
@@ -102,7 +128,7 @@ export function getEntityLabel(document: DocumentWithRelations): string {
 export function getEntityTypeLabel(entityType: EntityType): string {
   const labels: Record<EntityType, string> = {
     DRIVER: 'Autista',
-    TRACTOR: 'Trattore',
+    TRACTOR: 'Mezzo a motore',
     TRAILER: 'Semirimorchio',
     OTHER: 'Altro'
   };

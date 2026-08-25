@@ -4,7 +4,7 @@ Branding is configuration, not a code fork.
 
 ## Initial setup
 
-`bash nfrp setup` accepts company name, product name, subtitle, palette and an optional local logo file. The logo is copied into an ignored directory and imported into the application upload volume on first seed. Because it is public interface content rather than a secret, setup gives the copied file read permissions for the unprivileged application container while keeping `.env` private.
+`bash nfrp quickstart` uses safe synthetic defaults without asking questions. `bash nfrp setup` is the customized path: it accepts company name, product name, subtitle, palette and an optional local logo file. The logo is copied into an ignored directory and imported into the application upload volume on first seed. Because it is public interface content rather than a secret, setup gives the copied file read permissions for the unprivileged application container while keeping `.env` private.
 
 ## Runtime changes
 

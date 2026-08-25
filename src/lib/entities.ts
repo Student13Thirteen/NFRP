@@ -33,7 +33,7 @@ export function buildEntityOptions(input: {
       type: EntityType.TRACTOR,
       id: tractor.id,
       label: tractor.plate,
-      group: 'Trattori',
+      group: 'Mezzi a motore',
       active: tractor.active
     })),
     ...input.trailers.map((trailer) => ({

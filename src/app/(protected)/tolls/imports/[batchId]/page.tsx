@@ -7,6 +7,7 @@ import { ConfirmSubmitButton } from '@/components/ConfirmSubmitButton';
 import { DatePartFilters } from '@/components/DatePartFilters';
 import { FilteredReportButton } from '@/components/FilteredReportButton';
 import { PageHeader } from '@/components/PageHeader';
+import { PageSizeField } from '@/components/PageSizeField';
 import { TablePagination } from '@/components/TablePagination';
 import { buildDateFilterYears, parseFilterDateParts, type DateFilterSearchParams } from '@/lib/date-filters';
 import { formatDate } from '@/lib/dates';
@@ -224,6 +225,7 @@ export default async function TollBatchDetailPage({ params, searchParams }: Toll
       ) : null}
 
       <form className="filter-bar fuel-filter-bar" action={`/tolls/imports/${batchId}`}>
+        <PageSizeField pageSize={resolvedSearchParams.pageSize} />
         <label className="fuel-filter-search">
           Cerca
           <input name="q" placeholder="Targa, tessera, tratta o casello" defaultValue={resolvedSearchParams.q || ''} />

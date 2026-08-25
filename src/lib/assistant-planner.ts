@@ -31,7 +31,7 @@ export const assistantTripStatuses = ['PLANNED', 'SENT', 'COMPLETED', 'CANCELLED
 // registrata); gli altri restano validi sulle schede storiche pre-unificazione.
 export const assistantMaintenanceStatuses = ['PENDING', 'CONFIRMED', 'OPEN', 'IN_PROGRESS', 'COMPLETED', 'INVOICED', 'ARCHIVED'] as const;
 export const assistantWarehouseStatuses = ['IN_STOCK', 'LOW_STOCK', 'OUT_OF_STOCK', 'ARCHIVED'] as const;
-export const assistantCostSources = ['TRIPS', 'CONTAINER_TRIPS', 'FUEL', 'TOLLS', 'EXPENSE', 'MAINTENANCE', 'DOCUMENT', 'WAREHOUSE', 'WAREHOUSE_MOUNT'] as const;
+export const assistantCostSources = ['TRIPS', 'CONTAINER_TRIPS', 'FUEL', 'TOLLS', 'EXPENSE', 'MAINTENANCE', 'FINES', 'ROAD_ACCIDENTS', 'DOCUMENT', 'WAREHOUSE', 'WAREHOUSE_MOUNT'] as const;
 export const assistantRankMetrics = ['spend', 'count', 'consumption', 'costPerKm'] as const;
 export const assistantRankDirections = ['top', 'bottom'] as const;
 export const assistantTachographStatuses = ['documented', 'missing', 'all'] as const;
@@ -608,6 +608,8 @@ function detectCostSource(message: string): AssistantCostSource | undefined {
   if (/viaggi|trasporti|trasporto|foglio viaggio/i.test(message)) return 'TRIPS';
   if (/autostrade|pedaggi?|telepass|\bfai\b/i.test(message)) return 'TOLLS';
   if (/rifornimenti?|carburante|gasolio|diesel|ad\s*blue|adblue|hvo|fuelco/i.test(message)) return 'FUEL';
+  if (/verbali?|multe?|sanzion/i.test(message)) return 'FINES';
+  if (/sinistri?|incident[ei]|rimbors[oi]\s+assicurativ/i.test(message)) return 'ROAD_ACCIDENTS';
   if (/montaggi?|montat[io]|scaric[ao]\s+magazzino/i.test(message)) return 'WAREHOUSE_MOUNT';
   if (/magazzino|stock|giacenz/i.test(message)) return 'WAREHOUSE';
   if (/fatture?|ddt|ricambi|document[oi]\s+di\s+spesa/i.test(message)) return 'EXPENSE';

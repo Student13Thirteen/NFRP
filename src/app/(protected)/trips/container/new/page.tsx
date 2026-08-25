@@ -12,11 +12,15 @@ type Props = { searchParams: Promise<{ error?: string }> };
 export default async function NewContainerTripPage({ searchParams }: Props) {
   await requireUser();
   const params = await searchParams;
-  const [drivers, tractors, trailers, customers] = await Promise.all([
+  const [drivers, tractors, trailers, customers, vehicleOwners] = await Promise.all([
     prisma.driver.findMany({ orderBy: [{ active: 'desc' }, { lastName: 'asc' }, { firstName: 'asc' }] }),
     prisma.tractor.findMany({ orderBy: [{ active: 'desc' }, { plate: 'asc' }] }),
     prisma.trailer.findMany({ orderBy: [{ active: 'desc' }, { plate: 'asc' }] }),
-    prisma.customer.findMany({ where: { active: true }, orderBy: { name: 'asc' } })
+    prisma.customer.findMany({ where: { active: true }, orderBy: { name: 'asc' } }),
+    prisma.vehicleOwner.findMany({
+      select: { id: true, name: true, active: true },
+      orderBy: [{ active: 'desc' }, { name: 'asc' }]
+    })
   ]);
 
   return (
@@ -36,6 +40,7 @@ export default async function NewContainerTripPage({ searchParams }: Props) {
           tractors={buildTractorOptions(tractors)}
           trailers={buildTrailerOptions(trailers)}
           customers={buildCustomerOptions(customers)}
+          vehicleOwners={vehicleOwners}
           defaultValues={{ tripDate: toDateInputValue(new Date()) }}
           submitLabel="Crea trasporto container"
         />

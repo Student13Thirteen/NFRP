@@ -4,6 +4,7 @@ import { ArrowRight, Filter, Landmark, ReceiptText } from 'lucide-react';
 import { DatePartFilters } from '@/components/DatePartFilters';
 import { FilteredReportButton } from '@/components/FilteredReportButton';
 import { PageHeader } from '@/components/PageHeader';
+import { PageSizeField } from '@/components/PageSizeField';
 import { TablePagination } from '@/components/TablePagination';
 import { buildDateFilterYears, parseFilterDateParts, type DateFilterSearchParams } from '@/lib/date-filters';
 import { formatDate } from '@/lib/dates';
@@ -103,6 +104,10 @@ function sourceDestination(source: CostSource): { href: string; label: string } 
       return { href: '/maintenances', label: 'Manutenzioni' };
     case 'MAINTENANCE':
       return { href: '/maintenances', label: 'Manutenzioni' };
+    case 'FINES':
+      return { href: '/fines', label: 'Verbali' };
+    case 'ROAD_ACCIDENTS':
+      return { href: '/road-accidents', label: 'Sinistri stradali' };
     case 'DOCUMENT':
       return { href: '/documents', label: 'Documenti' };
     case 'WAREHOUSE':
@@ -153,7 +158,7 @@ export default async function CostsPage({ searchParams }: CostsPageProps) {
     <>
       <PageHeader
         title="Centro costi"
-        description="Vista unica di costi, ricavi, margini e impegni: viaggi, rifornimenti, pedaggi, leasing, fatture e DDT, manutenzioni e magazzino."
+        description="Vista unica di costi, ricavi, margini e impegni: viaggi, rifornimenti, pedaggi, leasing, fatture e DDT, manutenzioni, verbali, sinistri e magazzino."
         action={
           <div className="actions-row">
             <FilteredReportButton baseHref="/api/reports/costs" />
@@ -211,6 +216,7 @@ export default async function CostsPage({ searchParams }: CostsPageProps) {
       </p>
 
       <form className="filter-bar fuel-filter-bar" action="/costs">
+        <PageSizeField pageSize={resolvedSearchParams.pageSize} />
         <label className="fuel-filter-search">
           Cerca
           <input name="q" placeholder="Targa, fornitore, tratta, fattura, ricambio" defaultValue={resolvedSearchParams.q || ''} />

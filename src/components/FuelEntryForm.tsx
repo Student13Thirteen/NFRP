@@ -5,6 +5,7 @@ import { Save } from 'lucide-react';
 import { DatePartsInput } from '@/components/DatePartsInput';
 import { DriverAssignmentField } from '@/components/DriverAssignmentField';
 import { RecoverableForm } from '@/components/RecoverableForm';
+import { VehicleOwnerField, type VehicleOwnerOptionView } from '@/components/VehicleOwnerField';
 import type { DatedDriverAssignment } from '@/lib/driver-assignment-core';
 
 type TractorOption = {
@@ -49,6 +50,9 @@ export type FuelEntryFormDefaults = {
   fuelDate: string;
   fuelTime?: string | null;
   tractorId?: string | null;
+  externalVehicle?: boolean;
+  externalPlate?: string | null;
+  vehicleOwnerId?: string | null;
   driverId?: string | null;
   fuelSupplierId?: string | null;
   fuelCardId?: string | null;
@@ -74,6 +78,7 @@ type FuelEntryFormProps = {
   suppliers: SupplierOption[];
   cards: CardOption[];
   products: ProductOption[];
+  vehicleOwners: VehicleOwnerOptionView[];
   driverAssignments: DatedDriverAssignment[];
   defaultValues: FuelEntryFormDefaults;
   recoverOnError?: boolean;
@@ -126,6 +131,7 @@ export function FuelEntryForm({
   suppliers,
   cards,
   products,
+  vehicleOwners,
   driverAssignments,
   defaultValues,
   recoverOnError = false,
@@ -134,6 +140,8 @@ export function FuelEntryForm({
 }: FuelEntryFormProps) {
   const [fuelDate, setFuelDate] = useState(defaultValues.fuelDate);
   const [tractorId, setTractorId] = useState(defaultValues.tractorId || '');
+  // Mezzo non aziendale: la targa si scrive a mano e non entra in flotta.
+  const [externalVehicle, setExternalVehicle] = useState(Boolean(defaultValues.externalVehicle));
   const handleDateChange = useCallback((value: string) => setFuelDate(value), []);
   const litersRef = useRef<HTMLInputElement>(null);
   const priceRef = useRef<HTMLInputElement>(null);
@@ -165,20 +173,56 @@ export function FuelEntryForm({
   return (
     <RecoverableForm action={action} method="post" className="form-stack" recoveryKey={recoveryKey} recoverOnError={recoverOnError}>
       {submissionKey ? <input name="submissionKey" type="hidden" defaultValue={submissionKey} /> : null}
+      <fieldset className="vehicle-source-choice" aria-label="Origine del mezzo rifornito">
+        <label className={externalVehicle ? '' : 'selected'}>
+          <input
+            type="radio"
+            name="vehicleSourceChoice"
+            value="fleet"
+            checked={!externalVehicle}
+            onChange={() => setExternalVehicle(false)}
+          />
+          Mezzo della flotta
+        </label>
+        <label className={externalVehicle ? 'selected' : ''}>
+          <input
+            type="radio"
+            name="vehicleSourceChoice"
+            value="external"
+            checked={externalVehicle}
+            onChange={() => setExternalVehicle(true)}
+          />
+          Mezzo non nostro
+        </label>
+      </fieldset>
+      {externalVehicle ? <input name="externalVehicle" type="hidden" value="on" /> : null}
       <div className="form-grid">
         <DatePartsInput label="Data" name="fuelDate" defaultValue={defaultValues.fuelDate} required onValueChange={handleDateChange} />
-        <label>
-          Targa trattore
-          <select name="tractorId" value={tractorId} onChange={(event) => setTractorId(event.target.value)} required>
-            <option value="">Seleziona</option>
-            {tractors.map((tractor) => (
-              <option key={tractor.id} value={tractor.id}>
-                {tractorOptionLabel(tractor)}
-                {tractor.active ? '' : ' (non attivo)'}
-              </option>
-            ))}
-          </select>
-        </label>
+        {externalVehicle ? (
+          <label>
+            Targa mezzo non aziendale
+            <input
+              name="externalPlate"
+              defaultValue={defaultValues.externalPlate || ''}
+              placeholder="Es. AB123CD"
+              maxLength={20}
+              required
+            />
+          </label>
+        ) : (
+          <label>
+            Targa mezzo
+            <select name="tractorId" value={tractorId} onChange={(event) => setTractorId(event.target.value)} required>
+              <option value="">Seleziona</option>
+              {tractors.map((tractor) => (
+                <option key={tractor.id} value={tractor.id}>
+                  {tractorOptionLabel(tractor)}
+                  {tractor.active ? '' : ' (non attivo)'}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
         <label>
           Prodotto
           <select name="fuelProductId" defaultValue={defaultValues.fuelProductId || ''} required>
@@ -198,10 +242,23 @@ export function FuelEntryForm({
         </label>
       </div>
 
+      {externalVehicle ? (
+        <div className="external-vehicle-block">
+          <VehicleOwnerField
+            options={vehicleOwners}
+            defaultOwnerId={defaultValues.vehicleOwnerId}
+          />
+          <p className="muted">
+            La targa non entra in flotta e non genera scadenze. Se corrisponde a un mezzo gia in anagrafica il
+            rifornimento viene collegato a quel mezzo, per non spezzare la catena dei consumi.
+          </p>
+        </div>
+      ) : null}
+
       <DriverAssignmentField
         assignments={driverAssignments}
         drivers={drivers.map((driver) => ({ id: driver.id, label: driverOptionLabel(driver), active: driver.active }))}
-        tractorId={tractorId}
+        tractorId={externalVehicle ? '' : tractorId}
         date={fuelDate}
         defaultDriverId={defaultValues.driverId}
       />

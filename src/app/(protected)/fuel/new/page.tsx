@@ -13,7 +13,7 @@ type FuelNewPageProps = {
 export default async function FuelNewPage({ searchParams }: FuelNewPageProps) {
   await requireUser();
   const resolvedSearchParams = await searchParams;
-  const [tractors, drivers, suppliers, cards, products, driverAssignments] = await Promise.all([
+  const [tractors, drivers, suppliers, cards, products, driverAssignments, vehicleOwners] = await Promise.all([
     prisma.tractor.findMany({ orderBy: [{ active: 'desc' }, { plate: 'asc' }] }),
     prisma.driver.findMany({ orderBy: [{ active: 'desc' }, { lastName: 'asc' }, { firstName: 'asc' }] }),
     prisma.fuelSupplier.findMany({ orderBy: [{ active: 'desc' }, { name: 'asc' }] }),
@@ -25,6 +25,10 @@ export default async function FuelNewPage({ searchParams }: FuelNewPageProps) {
     prisma.tractorDriverAssignment.findMany({
       include: { driver: { select: { firstName: true, lastName: true } } },
       orderBy: { validFrom: 'desc' }
+    }),
+    prisma.vehicleOwner.findMany({
+      select: { id: true, name: true, active: true },
+      orderBy: [{ active: 'desc' }, { name: 'asc' }]
     })
   ]);
   const defaultProduct = products.find((product) => product.code === 'GLS') || products[0];
@@ -33,7 +37,7 @@ export default async function FuelNewPage({ searchParams }: FuelNewPageProps) {
     <>
       <PageHeader
         title="Nuovo rifornimento"
-        description="Inserimento manuale per scontrini non disponibili in tabulato PDF."
+        description="Inserimento manuale per scontrini non disponibili in tabulato PDF, anche per mezzi non aziendali."
         action={
           <Link className="secondary-button" href="/fuel">
             Rifornimenti
@@ -54,6 +58,7 @@ export default async function FuelNewPage({ searchParams }: FuelNewPageProps) {
           suppliers={suppliers}
           cards={cards}
           products={products}
+          vehicleOwners={vehicleOwners}
           driverAssignments={driverAssignments.map((assignment) => ({
             ...assignment,
             validFrom: toDateInputValue(assignment.validFrom),
