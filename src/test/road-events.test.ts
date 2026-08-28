@@ -1,10 +1,51 @@
 import { describe, expect, it } from 'vitest';
 import {
+  assertRoadFineImportValidation,
+  withInactiveLinkedOption,
   getRoadAccidentAccountingMovements,
   getRoadFineAccountingMovement,
   getRoadFineStatusLabel,
   roadEventMoneyInput
 } from '@/lib/road-events-core';
+
+describe('validazione delle bozze verbali acquisite', () => {
+  it('blocca una bozza importata che resta Da controllare', () => {
+    expect(() => assertRoadFineImportValidation({
+      source: 'IMPORT', currentStatus: 'TO_REVIEW', nextStatus: 'TO_REVIEW', acknowledged: true
+    })).toThrow('stato operativo diverso');
+  });
+
+  it('richiede la conferma esplicita prima della promozione', () => {
+    expect(() => assertRoadFineImportValidation({
+      source: 'IMPORT', currentStatus: 'TO_REVIEW', nextStatus: 'TO_PAY', acknowledged: false
+    })).toThrow('Conferma di avere controllato');
+  });
+
+  it('riconosce la validazione completata senza interferire con i verbali manuali', () => {
+    expect(assertRoadFineImportValidation({
+      source: 'IMPORT', currentStatus: 'TO_REVIEW', nextStatus: 'TO_PAY', acknowledged: true
+    })).toBe(true);
+    expect(assertRoadFineImportValidation({
+      source: 'MANUAL', currentStatus: 'TO_REVIEW', nextStatus: 'TO_REVIEW', acknowledged: false
+    })).toBe(false);
+  });
+});
+
+describe('opzioni di mezzi e autisti nella scheda verbale', () => {
+  const active = [{ id: 'tractor-1', label: 'AA111AA \u00b7 Iveco' }];
+
+  it('mantiene selezionabile il mezzo collegato anche se non piu attivo', () => {
+    expect(withInactiveLinkedOption(active, { id: 'tractor-9', label: 'ZZ999ZZ \u00b7 Scania' })).toEqual([
+      { id: 'tractor-1', label: 'AA111AA \u00b7 Iveco' },
+      { id: 'tractor-9', label: 'ZZ999ZZ \u00b7 Scania \u00b7 non attivo' }
+    ]);
+  });
+
+  it('non duplica un mezzo gia presente tra gli attivi e regge il valore assente', () => {
+    expect(withInactiveLinkedOption(active, { id: 'tractor-1', label: 'AA111AA \u00b7 Iveco' })).toEqual(active);
+    expect(withInactiveLinkedOption(active, null)).toEqual(active);
+  });
+});
 
 describe('regole contabili di verbali e sinistri', () => {
   it('non registra nel centro costi un verbale soltanto proposto o senza data di pagamento', () => {

@@ -302,6 +302,7 @@ export async function getCostCenterRows(): Promise<CostCenterRow[]> {
           { freightRevenueCents: { not: null } },
           { carrierCostCents: { not: null } },
           { tollCostCents: { not: null } },
+          { additionalCostCents: { not: null } },
           { extras: { some: { status: ContainerTripExtraStatus.APPROVED } } }
         ]
       },
@@ -542,6 +543,23 @@ export async function getCostCenterRows(): Promise<CostCenterRow[]> {
         netAmountCents: trip.tollCostCents || 0,
         vatAmountCents: 0,
         grossAmountCents: trip.tollCostCents || 0
+      });
+    }
+
+    if ((trip.additionalCostCents || 0) > 0) {
+      rows.push({
+        ...common,
+        key: `container-trip-additional-cost-${trip.id}`,
+        id: `${trip.id}-additional-cost`,
+        direction: 'COST',
+        categoryName: trip.additionalCostType
+          ? `Costo aggiuntivo container - ${trip.additionalCostType}`
+          : 'Costo aggiuntivo container',
+        supplierName: null,
+        reference,
+        netAmountCents: trip.additionalCostCents || 0,
+        vatAmountCents: 0,
+        grossAmountCents: trip.additionalCostCents || 0
       });
     }
   }

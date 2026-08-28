@@ -25,7 +25,7 @@ import {
   Wrench
 } from 'lucide-react';
 
-export type NavigationBadge = 'acquisitions' | 'documents' | 'expenses' | 'fuel' | 'leases' | 'tolls' | 'trips';
+export type NavigationBadge = 'acquisitions' | 'documents' | 'expenses' | 'fines' | 'fuel' | 'leases' | 'tolls' | 'trips';
 
 export type NavigationItem = {
   href: string;
@@ -71,7 +71,7 @@ export const navigationGroups: NavigationGroup[] = [
       { href: '/tolls', label: 'Pedaggi', icon: Route, badge: 'tolls' },
       { href: '/leases', label: 'Leasing', icon: Landmark, badge: 'leases' },
       { href: '/road-accidents', label: 'Sinistri stradali', icon: CarFront },
-      { href: '/fines', label: 'Verbali', icon: FileText },
+      { href: '/fines', label: 'Verbali', icon: FileText, badge: 'fines' },
       { href: '/costs', label: 'Centro costi', icon: CircleDollarSign },
       { href: '/maintenances', label: 'Manutenzioni', icon: Wrench, badge: 'expenses' },
       { href: '/warehouse', label: 'Magazzino', icon: Boxes }

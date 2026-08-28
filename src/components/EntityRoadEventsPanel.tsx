@@ -5,9 +5,9 @@ import { getRoadAccidentStatusLabel, getRoadFineStatusLabel } from '@/lib/road-e
 
 type FineRow = {
   id: string;
-  violationDate: Date;
+  violationDate: Date | null;
   noticeNumber: string | null;
-  authority: string;
+  authority: string | null;
   status: string;
 };
 
@@ -46,13 +46,13 @@ export function EntityRoadEventsPanel({ fines, accidents }: Props) {
               <span className="actions-row">
                 <FileText size={16} aria-hidden />
                 <span>
-                  <strong>{fine.noticeNumber || fine.authority}</strong>
+                  <strong>{fine.noticeNumber || fine.authority || 'Verbale da controllare'}</strong>
                   <small className="muted">Verbale · {formatDate(fine.violationDate)}</small>
                 </span>
               </span>
               <span className="actions-row">
                 <span className={`badge ${badgeClass(fine.status)}`}>{getRoadFineStatusLabel(fine.status)}</span>
-                <Link className="table-cell-link" href={`/fines/${fine.id}`} aria-label={`Apri verbale ${fine.noticeNumber || fine.authority}`}>
+                <Link className="table-cell-link" href={`/fines/${fine.id}`} aria-label={`Apri verbale ${fine.noticeNumber || fine.authority || 'da controllare'}`}>
                   Apri <ArrowRight size={14} aria-hidden />
                 </Link>
               </span>

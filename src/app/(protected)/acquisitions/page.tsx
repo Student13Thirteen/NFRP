@@ -2,6 +2,7 @@ import { requireUser } from '@/lib/auth';
 import Link from 'next/link';
 import {
   ArrowRight,
+  BadgeAlert,
   CheckCircle2,
   FileCheck2,
   FileInput,
@@ -44,6 +45,7 @@ export default async function AcquisitionsPage() {
     tripPending,
     fuelPending,
     tollPending,
+    finePending,
     expensePending,
     leaseContractPending,
     leaseInvoicePending,
@@ -51,6 +53,7 @@ export default async function AcquisitionsPage() {
     tripBatches,
     fuelBatches,
     tollBatches,
+    fineEvents,
     expenseEvents,
     leaseContractEvents,
     leaseInvoiceEvents
@@ -59,6 +62,7 @@ export default async function AcquisitionsPage() {
     prisma.tripImportRow.count({ where: { status: 'PENDING' } }),
     prisma.fuelEntry.count({ where: { status: 'PENDING' } }),
     prisma.tollEntry.count({ where: { status: 'PENDING' } }),
+    prisma.roadFine.count({ where: { status: 'TO_REVIEW', source: 'IMPORT' } }),
     prisma.expenseDocument.count({ where: { status: 'PENDING', source: { not: 'LEASE_INVOICE_IMPORT' } } }),
     prisma.leaseContract.count({ where: { status: 'PENDING' } }),
     prisma.expenseDocument.count({ where: { status: 'PENDING', source: 'LEASE_INVOICE_IMPORT' } }),
@@ -75,6 +79,14 @@ export default async function AcquisitionsPage() {
     }),
     prisma.tollImportBatch.findMany({
       include: { _count: { select: { entries: { where: { status: 'PENDING' } } } } },
+      orderBy: { createdAt: 'desc' },
+      take: 6
+    }),
+    prisma.roadFine.findMany({
+      where: { source: 'IMPORT' },
+      include: {
+        attachments: { orderBy: { createdAt: 'asc' }, take: 1, select: { originalFileName: true } }
+      },
       orderBy: { createdAt: 'desc' },
       take: 6
     }),
@@ -95,7 +107,7 @@ export default async function AcquisitionsPage() {
   ]);
 
   const leasePending = leaseContractPending + leaseInvoicePending;
-  const totalPending = documentPending + tripPending + fuelPending + tollPending + expensePending + leasePending;
+  const totalPending = documentPending + tripPending + fuelPending + tollPending + finePending + expensePending + leasePending;
   const cards = [
     {
       title: 'Documenti flotta',
@@ -109,8 +121,8 @@ export default async function AcquisitionsPage() {
     },
     {
       title: 'Bolle container',
-      detail: 'Lettere di vettura container, committenti e tappe',
-      format: 'PDF',
+      detail: 'Lettere di vettura container, committenti, tappe e foto',
+      format: 'PDF / immagini',
       icon: MapPinned,
       importHref: '/trips/import',
       reviewHref: '/trips/import/review',
@@ -136,6 +148,16 @@ export default async function AcquisitionsPage() {
       reviewHref: '/tolls/import/review',
       pending: tollPending,
       tone: 'violet'
+    },
+    {
+      title: 'Verbali',
+      detail: 'Violazioni stradali, importi, mezzi e scadenze da verificare',
+      format: 'PDF',
+      icon: BadgeAlert,
+      importHref: '/fines/import',
+      reviewHref: '/fines?status=TO_REVIEW',
+      pending: finePending,
+      tone: 'red'
     },
     {
       title: 'Leasing',
@@ -201,6 +223,14 @@ export default async function AcquisitionsPage() {
       label: batch._count.entries > 0 ? 'Da controllare' : 'Completato',
       pending: batch._count.entries,
       source: 'Pedaggi'
+    })),
+    ...fineEvents.map((fine) => ({
+      createdAt: fine.createdAt,
+      detail: [fine.noticeNumber || 'Numero da verificare', fine.attachments[0]?.originalFileName].filter(Boolean).join(' · '),
+      href: `/fines/${fine.id}`,
+      label: fine.status === 'TO_REVIEW' ? 'Da controllare' : 'Inserito nel registro',
+      pending: fine.status === 'TO_REVIEW' ? 1 : 0,
+      source: 'Verbale'
     })),
     ...expenseEvents.map((document) => ({
       createdAt: document.createdAt,

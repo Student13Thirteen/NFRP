@@ -28,7 +28,7 @@ export function RoadFineFields({ tractors, trailers, drivers, fine, showInitialF
         <label>Responsabilità<select name="responsibility" defaultValue={fine?.responsibility || 'TO_ASSESS'}>{ROAD_FINE_RESPONSIBILITIES.map((value) => <option key={value} value={value}>{getRoadFineResponsibilityLabel(value)}</option>)}</select></label>
         <label>Numero verbale<input name="noticeNumber" defaultValue={fine?.noticeNumber || ''} /></label>
         <label>Autorità emittente<input name="authority" required defaultValue={fine?.authority || ''} placeholder="Polizia stradale, Comune, ente" /></label>
-        <DatePartsInput label="Data infrazione" name="violationDate" required defaultValue={fine?.violationDate ? toDateInputValue(fine.violationDate) : toDateInputValue(new Date())} />
+        <DatePartsInput label="Data infrazione" name="violationDate" required defaultValue={fine ? toDateInputValue(fine.violationDate) : toDateInputValue(new Date())} />
         <label>Ora infrazione<input name="violationTime" type="time" defaultValue={fine?.violationTime || ''} /></label>
         <DatePartsInput label="Data notifica" name="notificationDate" defaultValue={fine?.notificationDate ? toDateInputValue(fine.notificationDate) : ''} />
         <label>Luogo<input name="location" required defaultValue={fine?.location || ''} /></label>

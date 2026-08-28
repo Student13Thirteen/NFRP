@@ -1,14 +1,15 @@
 import { requireUser } from '@/lib/auth';
 import Link from 'next/link';
-import { ArrowLeft, Download, Paperclip, Save, Trash2 } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, Download, Paperclip, Save, Trash2 } from 'lucide-react';
 import { notFound } from 'next/navigation';
 import { ConfirmSubmitButton } from '@/components/ConfirmSubmitButton';
 import { PageHeader } from '@/components/PageHeader';
+import { RecoverableForm } from '@/components/RecoverableForm';
 import { RoadEventFileUpload } from '@/components/RoadEventFileUpload';
 import { RoadFineFields } from '@/components/RoadEventForms';
 import { formatDate } from '@/lib/dates';
 import { prisma } from '@/lib/db';
-import { getRoadEventAttachmentKindLabel, ROAD_EVENT_ATTACHMENT_KINDS, roadFineInclude } from '@/lib/road-events';
+import { getRoadEventAttachmentKindLabel, ROAD_EVENT_ATTACHMENT_KINDS, roadEventDriverSelect, roadEventVehicleSelect, roadFineInclude, withInactiveLinkedOption } from '@/lib/road-events';
 import { addRoadFineAttachmentsAction, deleteRoadFineAction, deleteRoadFineAttachmentAction, updateRoadFineAction } from '../actions';
 
 type Props = { params: Promise<{ id: string }>; searchParams: Promise<{ error?: string }> };
@@ -18,20 +19,49 @@ export default async function RoadFineDetailPage({ params, searchParams }: Props
   const [{ id }, query] = await Promise.all([params, searchParams]);
   const [fine, tractors, trailers, drivers] = await Promise.all([
     prisma.roadFine.findUnique({ where: { id }, include: roadFineInclude }),
-    prisma.tractor.findMany({ where: { active: true }, orderBy: { plate: 'asc' }, select: { id: true, plate: true, brand: true, model: true } }),
-    prisma.trailer.findMany({ where: { active: true }, orderBy: { plate: 'asc' }, select: { id: true, plate: true, brand: true, model: true } }),
-    prisma.driver.findMany({ where: { active: true }, orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }], select: { id: true, firstName: true, lastName: true } })
+    prisma.tractor.findMany({ where: { active: true }, orderBy: { plate: 'asc' }, select: roadEventVehicleSelect }),
+    prisma.trailer.findMany({ where: { active: true }, orderBy: { plate: 'asc' }, select: roadEventVehicleSelect }),
+    prisma.driver.findMany({ where: { active: true }, orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }], select: roadEventDriverSelect })
   ]);
   if (!fine) notFound();
+  const [linkedTractor, linkedTrailer, linkedDriver] = await Promise.all([
+    fine.tractorId && !tractors.some((item) => item.id === fine.tractorId)
+      ? prisma.tractor.findUnique({ where: { id: fine.tractorId }, select: roadEventVehicleSelect })
+      : null,
+    fine.trailerId && !trailers.some((item) => item.id === fine.trailerId)
+      ? prisma.trailer.findUnique({ where: { id: fine.trailerId }, select: roadEventVehicleSelect })
+      : null,
+    fine.driverId && !drivers.some((item) => item.id === fine.driverId)
+      ? prisma.driver.findUnique({ where: { id: fine.driverId }, select: roadEventDriverSelect })
+      : null
+  ]);
+  const vehicleOption = (item: { id: string; plate: string; brand: string | null; model: string | null }) => ({ id: item.id, label: [item.plate, item.brand, item.model].filter(Boolean).join(' \u00b7 ') });
+  const driverOption = (item: { id: string; firstName: string; lastName: string }) => ({ id: item.id, label: `${item.lastName} ${item.firstName}` });
+  const tractorOptions = withInactiveLinkedOption(tractors.map(vehicleOption), linkedTractor ? vehicleOption(linkedTractor) : null);
+  const trailerOptions = withInactiveLinkedOption(trailers.map(vehicleOption), linkedTrailer ? vehicleOption(linkedTrailer) : null);
+  const driverOptions = withInactiveLinkedOption(drivers.map(driverOption), linkedDriver ? driverOption(linkedDriver) : null);
+  const awaitingValidation = fine.source === 'IMPORT' && fine.status === 'TO_REVIEW';
   return <>
-    <PageHeader title={`Verbale ${fine.noticeNumber || fine.authority}`} description={`${formatDate(fine.violationDate)} · ${fine.location}`} action={<Link className="secondary-button" href="/fines"><ArrowLeft size={16} aria-hidden />Torna ai verbali</Link>} />
+    <PageHeader title={`Verbale ${fine.noticeNumber || fine.authority || 'da controllare'}`} description={`${formatDate(fine.violationDate)} · ${fine.location || 'Luogo da completare'}`} action={<Link className="secondary-button" href="/fines"><ArrowLeft size={16} aria-hidden />Torna ai verbali</Link>} />
     {query.error ? <p className="form-error">{query.error}</p> : null}
+    {awaitingValidation ? <div className="review-banner" style={{ display: 'flex', gap: 10, alignItems: 'flex-start', marginBottom: 18 }}><AlertTriangle size={18} aria-hidden style={{ flexShrink: 0, marginTop: 2 }} /><span><strong>Bozza acquisita: completa la validazione prima di inserirla nel flusso operativo.</strong><br />{fine.reviewReasons ? `${fine.reviewReasons} ` : ''}Quando i dati sono completi, scegli lo stato corretto nel primo campo, conferma il controllo e salva.</span></div> : null}
     <section className="panel">
-      <form action={updateRoadFineAction.bind(null, fine.id)} className="form-stack">
+      <RecoverableForm
+        action={updateRoadFineAction.bind(null, fine.id)}
+        className="form-stack"
+        recoveryKey={`fine:${fine.id}:edit`}
+        recoverOnError={Boolean(query.error)}
+      >
         <input name="expectedUpdatedAt" type="hidden" value={fine.updatedAt.toISOString()} />
-        <RoadFineFields fine={fine} tractors={tractors.map((item) => ({ id: item.id, label: [item.plate, item.brand, item.model].filter(Boolean).join(' · ') }))} trailers={trailers.map((item) => ({ id: item.id, label: [item.plate, item.brand, item.model].filter(Boolean).join(' · ') }))} drivers={drivers.map((item) => ({ id: item.id, label: `${item.lastName} ${item.firstName}` }))} />
-        <button className="primary-button" type="submit"><Save size={16} aria-hidden />Salva modifiche</button>
-      </form>
+        <RoadFineFields fine={fine} tractors={tractorOptions} trailers={trailerOptions} drivers={driverOptions} />
+        {awaitingValidation ? (
+          <label className="checkbox-row">
+            <input name="confirmImportReview" type="checkbox" required />
+            Ho controllato il PDF, completato i campi obbligatori e confermo l’inserimento del verbale nello stato selezionato.
+          </label>
+        ) : null}
+        <button className="primary-button" type="submit"><Save size={16} aria-hidden />{awaitingValidation ? 'Valida e inserisci verbale' : 'Salva modifiche'}</button>
+      </RecoverableForm>
     </section>
 
     <section className="detail-section" style={{ marginTop: 18 }}><h2>Allegati</h2>

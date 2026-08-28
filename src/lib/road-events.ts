@@ -13,6 +13,7 @@ import { removeStoredPdf } from '@/lib/files';
 import { formBoolean, formString, optionalFormString } from '@/lib/form';
 import { getRoadEventFiles, storeRoadEventFile, type StoredRoadEventFile } from '@/lib/road-event-files';
 import {
+  assertRoadFineImportValidation,
   getRoadAccidentStatusLabel,
   getRoadEventAttachmentKindLabel,
   getRoadFineStatusLabel
@@ -28,7 +29,8 @@ export {
   getRoadFineAccountingMovement,
   getRoadFineResponsibilityLabel,
   getRoadFineStatusLabel,
-  roadEventMoneyInput
+  roadEventMoneyInput,
+  withInactiveLinkedOption
 } from '@/lib/road-events-core';
 
 export const ROAD_FINE_STATUSES = Object.values(RoadFineStatus);
@@ -232,9 +234,28 @@ export async function updateRoadFine(id: string, formData: FormData): Promise<vo
   const data = fineData(formData);
   const expected = expectedUpdatedAt(formData);
   await prisma.$transaction(async (tx) => {
-    const updated = await tx.roadFine.updateMany({ where: { id, updatedAt: expected }, data });
+    const current = await tx.roadFine.findUnique({ where: { id }, select: { source: true, status: true } });
+    if (!current) throw new Error('Verbale non trovato.');
+    const validatedImport = assertRoadFineImportValidation({
+      source: current.source,
+      currentStatus: current.status,
+      nextStatus: data.status,
+      acknowledged: formBoolean(formData, 'confirmImportReview')
+    });
+    const updated = await tx.roadFine.updateMany({
+      where: { id, updatedAt: expected },
+      data: validatedImport ? { ...data, reviewReasons: null } : data
+    });
     if (updated.count !== 1) throw new Error('Il verbale è stato modificato da un’altra scheda. Ricarica la pagina.');
-    await tx.roadFineRevision.create({ data: { fineId: id, event: 'UPDATED', summary: `Verbale aggiornato: ${getRoadFineStatusLabel(data.status)}.` } });
+    await tx.roadFineRevision.create({
+      data: {
+        fineId: id,
+        event: validatedImport ? 'VALIDATED' : 'UPDATED',
+        summary: validatedImport
+          ? `Acquisizione verificata e verbale inserito nel flusso: ${getRoadFineStatusLabel(data.status)}.`
+          : `Verbale aggiornato: ${getRoadFineStatusLabel(data.status)}.`
+      }
+    });
   });
 }
 
