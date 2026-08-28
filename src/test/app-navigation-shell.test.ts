@@ -162,6 +162,17 @@ describe('pulsanti che dichiarano la destinazione', () => {
     expect(costs).not.toContain('Registra fattura o DDT');
   });
 
+  it('espone i verbali nel centro Acquisizioni e nel registro con lo stesso ingresso PDF', () => {
+    const acquisitions = source('src/app/(protected)/acquisitions/page.tsx');
+    const fines = source('src/app/(protected)/fines/page.tsx');
+
+    expect(acquisitions).toContain("title: 'Verbali'");
+    expect(acquisitions).toContain("importHref: '/fines/import'");
+    expect(acquisitions).toContain("reviewHref: '/fines?status=TO_REVIEW'");
+    expect(fines).toContain('href="/fines/import"');
+    expect(pageTitle('/fines/import')).toBe('Acquisisci verbali da PDF');
+  });
+
   it('dichiara nel centro costi l’ambito applicato ai totali', () => {
     expect(source('src/app/(protected)/costs/page.tsx')).toContain('Totali calcolati sulla vista');
   });

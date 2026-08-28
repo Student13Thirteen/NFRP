@@ -3,10 +3,12 @@ import { VehicleLifecycleStatus } from '@prisma/client';
 import Link from 'next/link';
 import { Archive, CheckCircle2, CircleAlert, FileText, Plus, Truck } from 'lucide-react';
 import { PageHeader } from '@/components/PageHeader';
-import { DatePartsInput } from '@/components/DatePartsInput';
 import { InlineVehicleTypeSelect } from '@/components/InlineVehicleTypeSelect';
-import { formatDate, startOfDay, toDateInputValue } from '@/lib/dates';
+import { RegistryTable, type RegistryTableRow } from '@/components/RegistrySearch';
+import { formatDate } from '@/lib/dates';
 import { prisma } from '@/lib/db';
+import { findCurrentDriverAssignment, formatDriverName, formatPlateList } from '@/lib/fleet-pairing';
+import { buildRegistrySearchText } from '@/lib/registry-search';
 import { getVehicleLifecycleBadgeClass, getVehicleLifecycleLabel } from '@/lib/vehicle-lifecycle';
 import {
   MOTOR_VEHICLE_TYPES,
@@ -18,45 +20,43 @@ import {
   matchesMotorVehicleTypeFilter,
   parseMotorVehicleTypeFilter
 } from '@/lib/vehicle-types';
-import { createTractorAction, setTractorVehicleTypeAction } from './actions';
+import { setTractorVehicleTypeAction } from './actions';
 import { activeTachographUpdateDocumentWhere } from '@/lib/tachograph-update';
 
 type TractorsPageProps = {
-  searchParams: Promise<{ view?: string; tachograph?: string; type?: string; error?: string }>;
+  searchParams: Promise<{ view?: string; tachograph?: string; type?: string }>;
 };
 
 export default async function TractorsPage({ searchParams }: TractorsPageProps) {
   await requireUser();
   const resolvedSearchParams = await searchParams;
   const inactiveView = resolvedSearchParams.view === 'inactive';
-  const today = startOfDay(new Date());
-  const [allTractors, drivers] = await Promise.all([
-    prisma.tractor.findMany({
-      where: inactiveView
-        ? { lifecycleStatus: { not: VehicleLifecycleStatus.ACTIVE } }
-        : { lifecycleStatus: VehicleLifecycleStatus.ACTIVE },
-      orderBy: [{ lifecycleEndedAt: 'desc' }, { plate: 'asc' }],
-      include: {
-        driverAssignments: {
-          where: {
-            validFrom: { lte: today },
-            OR: [{ validTo: null }, { validTo: { gte: today } }]
-          },
-          include: { driver: true },
-          orderBy: { validFrom: 'desc' },
-          take: 1
+  const allTractors = await prisma.tractor.findMany({
+    where: inactiveView
+      ? { lifecycleStatus: { not: VehicleLifecycleStatus.ACTIVE } }
+      : { lifecycleStatus: VehicleLifecycleStatus.ACTIVE },
+    orderBy: [{ lifecycleEndedAt: 'desc' }, { plate: 'asc' }],
+    include: {
+      // Le assegnazioni arrivano intere e il periodo valido oggi si sceglie in
+      // JavaScript con il giorno `Europe/Rome`, come nella scheda autista: cosi
+      // elenco e scheda non possono dire due cose diverse a cavallo di mezzanotte.
+      driverAssignments: {
+        select: {
+          validFrom: true,
+          validTo: true,
+          driver: { select: { id: true, firstName: true, lastName: true } }
         },
-        assignedTrailers: { select: { id: true, plate: true }, orderBy: { plate: 'asc' } },
-        documents: {
-          where: activeTachographUpdateDocumentWhere,
-          select: { id: true, issueDate: true, filePath: true },
-          orderBy: [{ issueDate: 'desc' }, { createdAt: 'desc' }]
-        },
-        _count: { select: { documents: true } }
-      }
-    }),
-    prisma.driver.findMany({ where: { active: true }, orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }] })
-  ]);
+        orderBy: { validFrom: 'desc' }
+      },
+      assignedTrailers: { select: { id: true, plate: true }, orderBy: { plate: 'asc' } },
+      documents: {
+        where: activeTachographUpdateDocumentWhere,
+        select: { id: true, issueDate: true, filePath: true },
+        orderBy: [{ issueDate: 'desc' }, { createdAt: 'desc' }]
+      },
+      _count: { select: { documents: true } }
+    }
+  });
   const tachographFilter = ['documented', 'missing'].includes(resolvedSearchParams.tachograph || '')
     ? resolvedSearchParams.tachograph
     : undefined;
@@ -91,6 +91,87 @@ export default async function TractorsPage({ searchParams }: TractorsPageProps) 
     return true;
   });
 
+  const rows: RegistryTableRow[] = tractors.map((tractor) => {
+    const tractorHref = `/vehicles/tractors/${tractor.id}`;
+    const currentAssignment = findCurrentDriverAssignment(tractor.driverAssignments);
+    const driverName = formatDriverName(currentAssignment?.driver);
+    const trailerPlates = formatPlateList(tractor.assignedTrailers);
+    const typeLabel = getMotorVehicleTypeLabel(tractor.vehicleType);
+    const lifecycleLabel = getVehicleLifecycleLabel(tractor.lifecycleStatus);
+    const vehicleLabel = [tractor.brand, tractor.model].filter(Boolean).join(' ');
+
+    return {
+      id: tractor.id,
+      search: buildRegistrySearchText([
+        tractor.plate,
+        typeLabel,
+        vehicleLabel,
+        tractor.notes,
+        driverName,
+        trailerPlates,
+        lifecycleLabel
+      ]),
+      cells: (
+        <>
+          <td className="click-cell">
+            <Link className="table-cell-link" href={tractorHref}>
+              <strong>{tractor.plate}</strong>
+              <div>
+                {tractor.documents.length > 0 ? (
+                  <span className="badge valid tachograph-evidence-badge">Aggiornamento tachigrafo documentato</span>
+                ) : (
+                  <span className="badge thirtyDays tachograph-evidence-badge">Documentazione tachigrafo mancante</span>
+                )}
+              </div>
+            </Link>
+          </td>
+          <td className="fleet-type-cell">
+            {inactiveView ? (
+              <span className={`badge ${getVehicleTypeBadgeClass(Boolean(tractor.vehicleType))}`}>{typeLabel}</span>
+            ) : (
+              <InlineVehicleTypeSelect
+                save={setTractorVehicleTypeAction.bind(null, tractor.id)}
+                defaultValue={tractor.vehicleType || ''}
+                label={`Tipologia del mezzo ${tractor.plate}`}
+                options={MOTOR_VEHICLE_TYPES.map((type) => ({
+                  value: type,
+                  label: getMotorVehicleTypeLabel(type)
+                }))}
+              />
+            )}
+          </td>
+          <td className="click-cell">
+            <Link className="table-cell-link" href={tractorHref}>
+              {vehicleLabel || '-'}
+              {tractor.notes ? <div className="muted">{tractor.notes}</div> : null}
+            </Link>
+          </td>
+          <td className="click-cell">
+            <Link className="table-cell-link" href={tractorHref}>
+              {driverName || <span className="muted">Nessuno oggi</span>}
+            </Link>
+          </td>
+          <td className="click-cell">
+            <Link className="table-cell-link" href={tractorHref}>
+              {trailerPlates || <span className="muted">Nessuno</span>}
+            </Link>
+          </td>
+          <td className="click-cell">
+            <Link className="table-cell-link" href={tractorHref}>
+              <span className={`badge ${getVehicleLifecycleBadgeClass(tractor.lifecycleStatus)}`}>{lifecycleLabel}</span>
+              {tractor.lifecycleEndedAt ? <span className="muted">Dal {formatDate(tractor.lifecycleEndedAt)}</span> : null}
+            </Link>
+          </td>
+          <td className="click-cell">
+            <Link className="table-cell-link" href={tractorHref}>
+              {tractor._count.documents}
+            </Link>
+          </td>
+        </>
+      )
+    };
+  });
+
   return (
     <>
       <PageHeader
@@ -98,7 +179,7 @@ export default async function TractorsPage({ searchParams }: TractorsPageProps) 
         description={
           inactiveView
             ? 'Trattori, motrici, furgoni, autocarri e autovetture non attivi, venduti o rottamati con storico conservato.'
-            : 'Trattori, motrici, furgoni, autocarri e autovetture attualmente in flotta.'
+            : 'Trattori, motrici, furgoni, autocarri e autovetture in flotta, con autista e semirimorchio abbinati.'
         }
         action={
           <div className="actions-row">
@@ -107,6 +188,12 @@ export default async function TractorsPage({ searchParams }: TractorsPageProps) 
               {inactiveView ? <Truck size={16} aria-hidden /> : <Archive size={16} aria-hidden />}
               {inactiveView ? 'Mezzi in flotta' : 'Mezzi fuori flotta'}
             </Link>
+            {inactiveView ? null : (
+              <Link className="primary-button" href="/vehicles/tractors/new">
+                <Plus size={16} aria-hidden />
+                Nuovo mezzo
+              </Link>
+            )}
           </div>
         }
       />
@@ -162,152 +249,25 @@ export default async function TractorsPage({ searchParams }: TractorsPageProps) 
           il salvataggio avviene subito, senza aprire la scheda.
         </p>
       ) : null}
-      {resolvedSearchParams.error ? <p className="form-error" style={{ marginBottom: 16 }}>{resolvedSearchParams.error}</p> : null}
-      <div className={`grid${inactiveView ? '' : ' two'}`}>
-        {!inactiveView ? <section className="panel">
-          <h2>Nuovo mezzo</h2>
-          <form action={createTractorAction} className="form-stack">
-            <div className="form-grid">
-              <label>
-                Targa
-                <input name="plate" required />
-              </label>
-              <label>
-                Tipologia
-                <select name="vehicleType" defaultValue="">
-                  <option value="">Da classificare</option>
-                  {MOTOR_VEHICLE_TYPES.map((type) => (
-                    <option key={type} value={type}>
-                      {getMotorVehicleTypeLabel(type)}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                Marca
-                <input name="brand" />
-              </label>
-              <label>
-                Modello
-                <input name="model" />
-              </label>
-              <label>
-                Autista iniziale
-                <select name="assignedDriverId" defaultValue="">
-                  <option value="">Nessuno</option>
-                  {drivers.map((driver) => (
-                    <option key={driver.id} value={driver.id}>
-                      {`${driver.lastName} ${driver.firstName}`.trim()}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <DatePartsInput
-                label="Associazione dal"
-                name="assignmentValidFrom"
-                defaultValue={toDateInputValue(today)}
-              />
-            </div>
-            <label>
-              Note
-              <textarea name="notes" />
-            </label>
-            <button className="primary-button" type="submit">
-              <Plus size={16} aria-hidden />
-              Salva
-            </button>
-          </form>
-        </section> : null}
-        <section className="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Targa</th>
-                <th>Tipologia</th>
-                <th>Veicolo</th>
-                <th>Autista</th>
-                <th>Semirimorchio</th>
-                <th>Stato</th>
-                <th>Documenti</th>
-              </tr>
-            </thead>
-            <tbody>
-              {tractors.length === 0 ? (
-                <tr><td className="empty-state" colSpan={7}>{inactiveView ? 'Nessun mezzo fuori flotta con questi filtri.' : 'Nessun mezzo in flotta con questi filtri.'}</td></tr>
-              ) : tractors.map((tractor) => {
-                const tractorHref = `/vehicles/tractors/${tractor.id}`;
-
-                return (
-                  <tr className="clickable-row" key={tractor.id}>
-                    <td className="click-cell">
-                      <Link className="table-cell-link" href={tractorHref}>
-                        <strong>{tractor.plate}</strong>
-                        <div>
-                          {tractor.documents.length > 0 ? (
-                            <span className="badge valid tachograph-evidence-badge">Aggiornamento tachigrafo documentato</span>
-                          ) : (
-                            <span className="badge thirtyDays tachograph-evidence-badge">Documentazione tachigrafo mancante</span>
-                          )}
-                        </div>
-                      </Link>
-                    </td>
-                    <td className="fleet-type-cell">
-                      {inactiveView ? (
-                        <span className={`badge ${getVehicleTypeBadgeClass(Boolean(tractor.vehicleType))}`}>
-                          {getMotorVehicleTypeLabel(tractor.vehicleType)}
-                        </span>
-                      ) : (
-                        <InlineVehicleTypeSelect
-                          save={setTractorVehicleTypeAction.bind(null, tractor.id)}
-                          defaultValue={tractor.vehicleType || ''}
-                          label={`Tipologia del mezzo ${tractor.plate}`}
-                          options={MOTOR_VEHICLE_TYPES.map((type) => ({
-                            value: type,
-                            label: getMotorVehicleTypeLabel(type)
-                          }))}
-                        />
-                      )}
-                    </td>
-                    <td className="click-cell">
-                      <Link className="table-cell-link" href={tractorHref}>
-                        {[tractor.brand, tractor.model].filter(Boolean).join(' ') || '-'}
-                        {tractor.notes ? <div className="muted">{tractor.notes}</div> : null}
-                      </Link>
-                    </td>
-                    <td className="click-cell">
-                      <Link className="table-cell-link" href={tractorHref}>
-                        {tractor.driverAssignments[0]
-                          ? `${tractor.driverAssignments[0].driver.lastName} ${tractor.driverAssignments[0].driver.firstName}`.trim()
-                          : '-'}
-                      </Link>
-                    </td>
-                    <td className="click-cell">
-                      <Link className="table-cell-link" href={tractorHref}>
-                        {tractor.assignedTrailers.length === 0
-                          ? '-'
-                          : tractor.assignedTrailers.map((trailer) => trailer.plate).join(', ')}
-                      </Link>
-                    </td>
-                    <td className="click-cell">
-                      <Link className="table-cell-link" href={tractorHref}>
-                        <span className={`badge ${getVehicleLifecycleBadgeClass(tractor.lifecycleStatus)}`}>
-                          {getVehicleLifecycleLabel(tractor.lifecycleStatus)}
-                        </span>
-                        {tractor.lifecycleEndedAt ? <span className="muted">Dal {formatDate(tractor.lifecycleEndedAt)}</span> : null}
-                      </Link>
-                    </td>
-                    <td className="click-cell">
-                      <Link className="table-cell-link" href={tractorHref}>
-                        {tractor._count.documents}
-                      </Link>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </section>
-      </div>
+      <RegistryTable
+        rows={rows}
+        columnCount={7}
+        searchLabel="Cerca mezzo a motore"
+        searchPlaceholder="Targa, marca, modello, autista, semirimorchio..."
+        entityLabel="mezzi"
+        emptyText={inactiveView ? 'Nessun mezzo fuori flotta con questi filtri.' : 'Nessun mezzo in flotta con questi filtri.'}
+        head={
+          <tr>
+            <th>Targa</th>
+            <th>Tipologia</th>
+            <th>Veicolo</th>
+            <th>Autista</th>
+            <th>Semirimorchio</th>
+            <th>Stato</th>
+            <th>Documenti</th>
+          </tr>
+        }
+      />
     </>
   );
 }

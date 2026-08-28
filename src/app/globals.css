@@ -3927,6 +3927,10 @@ html[data-theme='dark'] .assistant-panel {
   }
 }
 
+.form-grid.three {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
 .form-grid.four {
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }
@@ -3962,6 +3966,97 @@ html[data-theme='dark'] .assistant-panel {
   display: grid;
   gap: 12px;
   grid-template-columns: minmax(220px, 1.1fr) minmax(180px, 1fr) minmax(120px, 150px) 38px;
+}
+
+.container-trip-container-row {
+  /* Allineamento in alto: il tipo container puo aprire il campo libero e diventare
+     piu alto degli altri, e con `end` le etichette risultavano sfalsate. */
+  align-items: start;
+  display: grid;
+  gap: 10px 12px;
+  grid-template-areas:
+    "number type specification seal action"
+    "notes notes notes notes action";
+  grid-template-columns: minmax(180px, 1.1fr) minmax(190px, 1fr) minmax(150px, 0.8fr) minmax(140px, 0.8fr) 38px;
+}
+
+.guided-choice-custom {
+  margin-top: 6px;
+}
+
+/* Tappa container: una sola griglia a 12 colonne, cosi ogni campo ha la larghezza
+   che gli serve davvero (CAP e provincia stretti, indirizzo e luogo larghi) e le
+   etichette restano allineate anche quando una tendina apre il campo libero. */
+.container-trip-stop-grid {
+  align-items: start;
+  display: grid;
+  gap: 14px 12px;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+}
+
+.container-trip-stop-kind { grid-column: span 4; }
+.container-trip-stop-place { grid-column: span 5; }
+.container-trip-stop-time { grid-column: span 3; }
+.container-trip-stop-address { grid-column: span 5; }
+.container-trip-stop-postal { grid-column: span 2; }
+.container-trip-stop-city { grid-column: span 3; }
+.container-trip-stop-province { grid-column: span 2; }
+.container-trip-stop-notes { grid-column: span 10; }
+
+.container-trip-stop-remove {
+  align-self: end;
+  grid-column: span 2;
+  min-height: 42px;
+}
+
+@media (max-width: 1000px) {
+  .container-trip-stop-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .container-trip-stop-kind,
+  .container-trip-stop-place,
+  .container-trip-stop-city { grid-column: span 2; }
+  .container-trip-stop-time,
+  .container-trip-stop-postal,
+  .container-trip-stop-province { grid-column: span 1; }
+  .container-trip-stop-address { grid-column: span 3; }
+  .container-trip-stop-notes { grid-column: span 3; }
+  .container-trip-stop-remove { grid-column: span 1; }
+}
+
+.container-trip-container-number { grid-area: number; }
+.container-trip-container-type { grid-area: type; }
+.container-trip-container-specification { grid-area: specification; }
+.container-trip-container-seal { grid-area: seal; }
+.container-trip-container-notes { grid-area: notes; }
+.container-trip-container-row .trip-product-remove,
+.container-trip-container-row .trip-product-remove-spacer { grid-area: action; align-self: center; }
+
+.container-trip-calculated {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+}
+
+.container-trip-calculated > div {
+  background: var(--surface-soft);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 11px 12px;
+}
+
+.container-trip-calculated span {
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 750;
+}
+
+.container-trip-calculated strong {
+  font-size: 0.92rem;
 }
 
 .trip-product-remove,
@@ -4638,12 +4733,29 @@ html[data-theme='dark'] .assistant-panel {
 }
 
 @media (max-width: 940px) {
+  .form-grid.three,
   .form-grid.four,
   .detail-grid,
   .trip-product-row,
+  .container-trip-container-row,
+  .container-trip-stop-grid,
   .entry-choice-strip,
   .mode-banner {
     grid-template-columns: 1fr;
+  }
+
+  .container-trip-stop-grid > * {
+    grid-column: span 1;
+  }
+
+  .container-trip-container-row {
+    grid-template-areas:
+      "number"
+      "type"
+      "specification"
+      "seal"
+      "notes"
+      "action";
   }
 
   .fuel-source-assignment {
@@ -7006,4 +7118,118 @@ td.fleet-type-cell .inline-type-select {
 .app-update-banner span {
   color: var(--muted);
   font-size: 0.88rem;
+}
+
+/* Barra di ricerca delle anagrafiche: il filtro gira nel browser, quindi la
+   riga resta compatta e il conteggio dice sempre quante righe sono nascoste. */
+.registry-search-bar {
+  align-items: end;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--surface) 96%, white 4%), var(--surface-glass)),
+    var(--surface);
+  border: 1px solid color-mix(in srgb, var(--border) 86%, transparent);
+  border-radius: 8px;
+  box-shadow: var(--shadow-soft);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 16px;
+  padding: 14px;
+}
+
+.registry-search-bar .search-field {
+  flex: 1 1 280px;
+  min-width: 0;
+}
+
+.registry-search-bar .filter-count {
+  margin-bottom: 6px;
+}
+
+.registry-search-bar .secondary-button:disabled {
+  box-shadow: none;
+  cursor: not-allowed;
+  opacity: 0.52;
+  transform: none;
+}
+
+/* Complesso di oggi: autista, mezzo a motore e semirimorchio letti insieme
+   dalla scheda di una qualsiasi delle tre anagrafiche. */
+.fleet-pairing-panel {
+  margin-bottom: 16px;
+}
+
+.fleet-pairing-panel h2 {
+  margin: 0;
+}
+
+.fleet-pairing-panel > .section-heading-inline p {
+  margin: 4px 0 0;
+}
+
+.fleet-pairing-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr));
+  margin-top: 14px;
+}
+
+.fleet-pairing-card {
+  background: color-mix(in srgb, var(--surface-soft) 62%, var(--surface));
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding: 13px 14px;
+}
+
+.fleet-pairing-card.is-current {
+  border-color: color-mix(in srgb, var(--primary) 42%, var(--border));
+}
+
+.fleet-pairing-card.is-empty {
+  background: var(--surface);
+}
+
+.fleet-pairing-role {
+  align-items: center;
+  color: var(--muted);
+  display: flex;
+  flex-wrap: wrap;
+  font-size: 0.78rem;
+  font-weight: 800;
+  gap: 7px;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.fleet-pairing-role svg {
+  flex: 0 0 auto;
+}
+
+.fleet-pairing-value {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.fleet-pairing-value strong {
+  color: var(--heading);
+  font-size: 1.02rem;
+}
+
+.fleet-pairing-value span {
+  font-size: 0.85rem;
+}
+
+@media (max-width: 620px) {
+  .registry-search-bar {
+    align-items: stretch;
+  }
+
+  .registry-search-bar .filter-count {
+    margin-bottom: 0;
+  }
 }

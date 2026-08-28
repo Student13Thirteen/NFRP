@@ -1,16 +1,31 @@
-import { readdir, readFile } from 'node:fs/promises';
+import { readdir, readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
-import { extractInboxPdfTextFromBuffer } from '../src/lib/inbox-analysis';
+import { extractTripImportDocumentText } from '../src/lib/trip-import-document';
+import { detectTripImportDocument } from '../src/lib/trip-import-file-types';
 import { parseTripWaybillText } from '../src/lib/trip-import-parser';
 
 async function main() {
-  const sampleDir = process.argv[2];
-  if (!sampleDir) throw new Error('Indica la cartella dei PDF da analizzare.');
+  const samplePath = process.argv[2];
+  if (!samplePath) throw new Error('Indica un PDF, un’immagine o una cartella di campioni da analizzare.');
 
-  const names = (await readdir(sampleDir)).filter((name) => name.toLocaleLowerCase('it-IT').endsWith('.pdf')).sort();
-  for (const name of names) {
-    const extraction = await extractInboxPdfTextFromBuffer(await readFile(path.join(sampleDir, name)));
+  const metadata = await stat(samplePath);
+  const filePaths = metadata.isDirectory()
+    ? (await readdir(samplePath))
+        .filter((name) => /\.(?:pdf|jpe?g|png|webp)$/iu.test(name))
+        .sort()
+        .map((name) => path.join(samplePath, name))
+    : [samplePath];
+  for (const filePath of filePaths) {
+    const name = path.basename(filePath);
+    const buffer = await readFile(filePath);
+    const detected = detectTripImportDocument(buffer);
+    if (!detected) {
+      console.log(`### FILE ${name}\n### STATUS Formato non valido`);
+      continue;
+    }
+    const extraction = await extractTripImportDocumentText(buffer, detected);
     console.log(`### FILE ${name}`);
+    console.log(`### MIME ${detected.mimeType}`);
     console.log(`### STATUS ${extraction.status}`);
     console.log(`### TEXT\n${extraction.text}`);
     console.log(`### PARSED\n${JSON.stringify(parseTripWaybillText(extraction.text || ''), null, 2)}`);

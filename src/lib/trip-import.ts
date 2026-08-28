@@ -3,19 +3,23 @@ import 'server-only';
 import { createHash } from 'node:crypto';
 import {
   ContainerTripStatus,
+  ContainerTripStopKind,
   Prisma,
   TripImportRowStatus,
-  type Customer,
   type Tractor,
   type Trailer,
   type TripImportRow
 } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { findDriverNameSuggestion, type DriverNameCandidate } from '@/lib/driver-name-match';
-import { extractInboxPdfTextFromBuffer } from '@/lib/inbox-analysis';
-import { removeStoredPdf, storePdfFile, type StoredPdf } from '@/lib/files';
+import { removeStoredPdf, type StoredPdf } from '@/lib/files';
 import {
-  buildTripWaybillSourceKey,
+  extractTripImportDocumentText,
+  storeTripImportDocument
+} from '@/lib/trip-import-document';
+import type { DetectedTripImportDocument } from '@/lib/trip-import-file-types';
+import { detectTripImportDocument } from '@/lib/trip-import-file-types';
+import {
   parseTripWaybillText,
   type ParsedTripStop,
   type ParsedTripWaybill
@@ -77,101 +81,34 @@ function compactEntityName(value: string | null | undefined, fallback: string): 
   return cleaned || fallback;
 }
 
-function shortHash(value: string): string {
-  return createHash('sha256').update(value).digest('hex').slice(0, 32);
+function contentHash(value: Buffer): string {
+  return createHash('sha256').update(value).digest('hex');
 }
 
-function sourceKeyFor(row: ParsedTripWaybill, index: number): string {
-  return `trip-waybill:${shortHash(buildTripWaybillSourceKey(row, index))}`;
+function sourceKeyFor(hash: string, index: number): string {
+  return `trip-waybill:${hash}:${index}`;
 }
 
-async function ensureTractor(
-  tx: PrismaClientOrTx,
-  plateValue: string | null,
-  createdTractorIds: Set<string>
-): Promise<Tractor | null> {
+async function findExistingTractor(tx: PrismaClientOrTx, plateValue: string | null): Promise<Tractor | null> {
   const plate = compactPlate(plateValue);
   if (!plate) return null;
-
-  let tractor = await tx.tractor.findFirst({ where: { plate: { equals: plate, mode: 'insensitive' } } });
-  if (!tractor) {
-    tractor = await tx.tractor.create({
-      data: {
-        plate,
-        notes: 'Aggiunto automaticamente dall import bolle viaggio.'
-      }
-    });
-    createdTractorIds.add(tractor.id);
-    return tractor;
-  }
-
-  return tractor;
+  return tx.tractor.findFirst({ where: { plate: { equals: plate, mode: 'insensitive' } } });
 }
 
-async function ensureTrailer(
-  tx: PrismaClientOrTx,
-  plateValue: string | null,
-  tractorId: string | null,
-  createdTrailerIds: Set<string>
-): Promise<Trailer | null> {
+async function findExistingTrailer(tx: PrismaClientOrTx, plateValue: string | null): Promise<Trailer | null> {
   const plate = compactPlate(plateValue);
   if (!plate) return null;
-
-  let trailer = await tx.trailer.findFirst({ where: { plate: { equals: plate, mode: 'insensitive' } } });
-  if (!trailer) {
-    trailer = await tx.trailer.create({
-      data: {
-        plate,
-        assignedTractorId: tractorId || undefined,
-        notes: 'Aggiunto automaticamente dall import bolle viaggio.'
-      }
-    });
-    createdTrailerIds.add(trailer.id);
-    return trailer;
-  }
-
-  if (tractorId && !trailer.assignedTractorId) {
-    trailer = await tx.trailer.update({ where: { id: trailer.id }, data: { assignedTractorId: tractorId } });
-  }
-
-  return trailer;
+  return tx.trailer.findFirst({ where: { plate: { equals: plate, mode: 'insensitive' } } });
 }
 
-async function ensureCustomer(
-  tx: PrismaClientOrTx,
-  row: ParsedTripWaybill,
-  createdCustomerIds: Set<string>
-): Promise<Customer | null> {
+async function findExistingCustomer(tx: PrismaClientOrTx, row: ParsedTripWaybill) {
   const code = row.customerCode?.trim() || null;
   const name = compactEntityName(row.customerName, code ? `Committente ${code}` : '');
   if (!code && !name) return null;
-
   if (code) {
-    const existing = await tx.customer.findUnique({ where: { code } });
-    if (existing) return existing;
-
-    const created = await tx.customer.create({
-      data: {
-        code,
-        name,
-        notes: 'Aggiunto automaticamente dall import bolle viaggio.'
-      }
-    });
-    createdCustomerIds.add(created.id);
-    return created;
+    return tx.customer.findUnique({ where: { code } });
   }
-
-  const existingByName = await tx.customer.findFirst({ where: { name: { equals: name, mode: 'insensitive' } } });
-  if (existingByName) return existingByName;
-
-  const created = await tx.customer.create({
-    data: {
-      name,
-      notes: 'Aggiunto automaticamente dall import bolle viaggio.'
-    }
-  });
-  createdCustomerIds.add(created.id);
-  return created;
+  return tx.customer.findFirst({ where: { name: { equals: name, mode: 'insensitive' } } });
 }
 
 function rowReviewReasons(row: ParsedTripWaybill, additionalReasons: string[]): string | null {
@@ -187,7 +124,7 @@ function buildImportRowData(input: {
   driver: DriverNameCandidate | null;
   tractor: Tractor | null;
   trailer: Trailer | null;
-  customer: Customer | null;
+  customer: { id: string; name: string } | null;
   reviewReasons: string | null;
 }): Prisma.TripImportRowCreateInput {
   return {
@@ -235,18 +172,53 @@ function buildImportRowData(input: {
   };
 }
 
-async function createTripRowsFromStoredPdf(storedPdf: StoredPdf, fileBuffer: Buffer): Promise<TripImportSingleResult> {
-  const extraction = await extractInboxPdfTextFromBuffer(fileBuffer);
+// La chiave riga e legata all'impronta del file: un secondo file con la stessa LDV
+// resta una proposta legittima, ma va segnalata perche puo essere un doppione.
+async function buildDuplicateWaybillReasons(
+  tx: PrismaClientOrTx,
+  row: ParsedTripWaybill
+): Promise<string[]> {
+  const waybillNumber = row.documentNumber?.trim();
+  if (!waybillNumber) return [];
+
+  const existingTrip = await tx.containerTrip.findFirst({
+    where: { waybillNumber },
+    select: { tripNumber: true },
+    orderBy: { tripNumber: 'asc' }
+  });
+  if (existingTrip) {
+    return [`LDV ${waybillNumber} gia registrata nel viaggio ${existingTrip.tripNumber}: conferma solo se e davvero un trasporto diverso.`];
+  }
+
+  const existingPendingRow = await tx.tripImportRow.findFirst({
+    where: { documentNumber: waybillNumber, status: TripImportRowStatus.PENDING },
+    select: { id: true }
+  });
+  if (existingPendingRow) {
+    return [`LDV ${waybillNumber} gia in attesa di conferma da un altro file: controlla prima di confermare.`];
+  }
+
+  return [];
+}
+
+async function createTripRowsFromStoredDocument(
+  storedPdf: StoredPdf,
+  fileBuffer: Buffer,
+  detected: DetectedTripImportDocument,
+  hash: string
+): Promise<TripImportSingleResult> {
+  const extraction = await extractTripImportDocumentText(fileBuffer, detected);
   const parsed = parseTripWaybillText(extraction.text || '');
 
   if (parsed.rows.length === 0) {
-    throw new Error('Nel PDF non ho trovato bolle viaggio nel formato atteso.');
+    throw new Error('Nel file non ho trovato una bolla viaggio nel formato atteso.');
   }
 
   return prisma.$transaction(async (tx) => {
     const batch = await tx.tripImportBatch.create({
       data: {
         ...storedPdf,
+        contentHash: hash,
         extractedText: extraction.text ? extraction.text.slice(0, 60000) : null,
         extractionStatus: extraction.status,
         parsedRows: parsed.rows.length,
@@ -254,10 +226,6 @@ async function createTripRowsFromStoredPdf(storedPdf: StoredPdf, fileBuffer: Buf
       }
     });
 
-    const createdTractorIds = new Set<string>();
-    const createdTrailerIds = new Set<string>();
-    const createdCustomerIds = new Set<string>();
-    const createdLocationIds = new Set<string>();
     let importedRows = 0;
     let duplicateRows = 0;
     const drivers = await tx.driver.findMany({
@@ -265,7 +233,7 @@ async function createTripRowsFromStoredPdf(storedPdf: StoredPdf, fileBuffer: Buf
     });
 
     for (const [index, row] of parsed.rows.entries()) {
-      const sourceKey = sourceKeyFor(row, index);
+      const sourceKey = sourceKeyFor(hash, index);
       const existing = await tx.tripImportRow.findUnique({ where: { sourceKey }, select: { id: true } });
       if (existing) {
         duplicateRows += 1;
@@ -277,9 +245,24 @@ async function createTripRowsFromStoredPdf(storedPdf: StoredPdf, fileBuffer: Buf
       if (row.driverName && !driver) {
         additionalReviewReasons.push('Autista OCR non associato: selezionalo in revisione.');
       }
-      const tractor = await ensureTractor(tx, row.tractorPlate, createdTractorIds);
-      const trailer = await ensureTrailer(tx, row.trailerPlate, tractor?.id || null, createdTrailerIds);
-      const customer = await ensureCustomer(tx, row, createdCustomerIds);
+      const tractor = await findExistingTractor(tx, row.tractorPlate);
+      const trailer = await findExistingTrailer(tx, row.trailerPlate);
+      const customer = await findExistingCustomer(tx, row);
+      if (row.tractorPlate && !tractor) {
+        additionalReviewReasons.push(`Targa trattore ${row.tractorPlate} non associata: controllala nella scheda del viaggio.`);
+      }
+      if (row.trailerPlate && !trailer) {
+        additionalReviewReasons.push(`Targa semirimorchio ${row.trailerPlate} non associata: controllala nella scheda del viaggio.`);
+      }
+      if ((row.customerCode || row.customerName) && !customer) {
+        additionalReviewReasons.push('Committente non ancora in anagrafica: controllalo nella scheda del viaggio.');
+      }
+      if (detected.kind === 'image') {
+        additionalReviewReasons.push('Dati letti da una fotografia: controlla tutti i campi e inserisci a mano i valori manoscritti non affidabili.');
+      }
+      for (const reason of await buildDuplicateWaybillReasons(tx, row)) {
+        additionalReviewReasons.push(reason);
+      }
 
       await tx.tripImportRow.create({
         data: buildImportRowData({
@@ -307,10 +290,10 @@ async function createTripRowsFromStoredPdf(storedPdf: StoredPdf, fileBuffer: Buf
         importedRows,
         duplicateRows,
         createdDrivers: 0,
-        createdTractors: createdTractorIds.size,
-        createdTrailers: createdTrailerIds.size,
-        createdCustomers: createdCustomerIds.size,
-        createdLocations: createdLocationIds.size
+        createdTractors: 0,
+        createdTrailers: 0,
+        createdCustomers: 0,
+        createdLocations: 0
       }
     });
 
@@ -323,26 +306,58 @@ async function createTripRowsFromStoredPdf(storedPdf: StoredPdf, fileBuffer: Buf
       skippedRows: parsed.skippedSections,
       pendingRows,
       createdDrivers: 0,
-      createdTractors: createdTractorIds.size,
-      createdTrailers: createdTrailerIds.size,
-      createdCustomers: createdCustomerIds.size,
-      createdLocations: createdLocationIds.size
+      createdTractors: 0,
+      createdTrailers: 0,
+      createdCustomers: 0,
+      createdLocations: 0
     };
   });
 }
 
-export async function importTripWaybillPdfFiles(files: File[]): Promise<TripImportResult> {
-  if (files.length === 0) throw new Error('Seleziona almeno un PDF viaggio.');
+async function duplicateImportResult(hash: string, fileName: string): Promise<TripImportSingleResult | null> {
+  const existing = await prisma.tripImportBatch.findUnique({
+    where: { contentHash: hash },
+    include: { rows: { select: { status: true } } }
+  });
+  if (!existing) return null;
+  return {
+    batchId: existing.id,
+    fileName,
+    parsedRows: existing.parsedRows,
+    importedRows: 0,
+    duplicateRows: Math.max(1, existing.rows.length),
+    skippedRows: existing.skippedRows,
+    pendingRows: existing.rows.filter((row) => row.status === TripImportRowStatus.PENDING).length,
+    createdDrivers: 0,
+    createdTractors: 0,
+    createdTrailers: 0,
+    createdCustomers: 0,
+    createdLocations: 0
+  };
+}
+
+export async function importTripWaybillFiles(files: File[]): Promise<TripImportResult> {
+  if (files.length === 0) throw new Error('Seleziona almeno un PDF o un’immagine del viaggio.');
 
   const results: TripImportSingleResult[] = [];
 
   for (const file of files) {
     const fileBuffer = Buffer.from(await file.arrayBuffer());
-    const storedPdf = await storePdfFile(file);
+    const detectedBeforeStorage = detectTripImportDocument(fileBuffer);
+    if (!detectedBeforeStorage) {
+      throw new Error('Sono accettati soltanto PDF e immagini JPG, PNG o WebP valide.');
+    }
+    const hash = contentHash(fileBuffer);
+    const duplicate = await duplicateImportResult(hash, file.name || 'bolla-container');
+    if (duplicate) {
+      results.push(duplicate);
+      continue;
+    }
+    const { storedFile, detected } = await storeTripImportDocument(file, fileBuffer);
     try {
-      results.push(await createTripRowsFromStoredPdf(storedPdf, fileBuffer));
+      results.push(await createTripRowsFromStoredDocument(storedFile, fileBuffer, detected, hash));
     } catch (error) {
-      await removeStoredPdf(storedPdf.filePath);
+      await removeStoredPdf(storedFile.filePath);
       throw error;
     }
   }
@@ -370,6 +385,27 @@ function buildCustomerReference(row: TripImportRow): string | null {
     row.companyReference || null
   ].filter(Boolean);
   return parts.length > 0 ? parts.join(' - ') : null;
+}
+
+// Il riquadro si chiama `DATI PRESA`, ma la bolla dichiara esplicitamente quando quel
+// riquadro e invece la consegna: nel viaggio di importazione il terminal di consegna
+// riporta `VEDI DELIVERY`, cioe rimanda proprio a quell'indirizzo. Non e una deduzione,
+// e quello che c'e scritto sul documento; negli altri casi resta una presa.
+function stopKindFromWaybill(deliveryTerminalName: string | null): ContainerTripStopKind {
+  return deliveryTerminalName?.toLocaleUpperCase('it-IT').includes('VEDI DELIVERY')
+    ? ContainerTripStopKind.DELIVERY
+    : ContainerTripStopKind.PICKUP;
+}
+
+function buildRouteSequence(row: TripImportRow, stops: ParsedTripStop[]): string | null {
+  const values = [
+    row.loadingTerminalName || row.loadingBaseName,
+    ...stops.map((stop) => stop.name),
+    row.deliveryTerminalName?.toLocaleUpperCase('it-IT') === 'VEDI DELIVERY'
+      ? null
+      : row.deliveryTerminalName
+  ].filter((value): value is string => Boolean(value?.trim()));
+  return values.length > 0 ? Array.from(new Set(values)).join(' → ') : null;
 }
 
 function parsedStopsFromJson(value: Prisma.JsonValue | null): ParsedTripStop[] {
@@ -457,6 +493,7 @@ export async function confirmTripImportRow(
         customerName: row.customerName || customer?.name || null,
         customerReference: buildCustomerReference(row),
         carrierName: row.carrierName,
+        routeSequence: buildRouteSequence(row, stops),
         driverId: selectedDriverId,
         tractorId: row.tractorId,
         trailerId: row.trailerId,
@@ -473,7 +510,7 @@ export async function confirmTripImportRow(
         compilerName: row.compilerName,
         compilationPlace: row.compilationPlace,
         notes: row.reviewReasons ? `Da verificare: ${row.reviewReasons}` : null,
-        sourceType: 'PDF_WAYBILL',
+        sourceType: row.batch.mimeType.startsWith('image/') ? 'IMAGE_WAYBILL' : 'PDF_WAYBILL',
         externalRecordId: row.sourceKey,
         containers: containers.length > 0
           ? {
@@ -487,7 +524,7 @@ export async function confirmTripImportRow(
           ? {
               create: stops.map((stop, position) => ({
                 position,
-                kind: 'PICKUP',
+                kind: stopKindFromWaybill(row.deliveryTerminalName),
                 name: stop.name,
                 address: stop.address,
                 postalCode: stop.postalCode,

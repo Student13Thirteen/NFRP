@@ -29,6 +29,10 @@ NFRP is a modular monolith for the operational processes of a transport SME. Thi
 - dated tractor-driver assignments drive historical attribution, while driver employment periods remain a separate registry;
 - motor vehicles and trailers use explicit operational classifications, and externally owned fleet records link to a reusable owner registry;
 - road fines and road accidents are distinct traceable registers with explicit status/responsibility, vehicle and driver links, deadlines, costs and authenticated attachments;
+- road fine PDFs are read into `TO_REVIEW` drafts that stay outside the cost center: the parser proposes only the fields the document proves, re-sending a file is recognized by fingerprint, and leaving review requires the mandatory fields plus an explicit human confirmation;
+- container waybills are acquired from PDF and from JPG, PNG and WebP photographs validated by binary signature; acquisition creates no master data, links only existing records and leaves every row `PENDING`;
+- registries open on the list: search runs in the browser over the loaded rows, creation lives on its own page, and the three fleet registries always show the working unit of driver, motor vehicle and trailer;
+- the driver of a vehicle is never inferred: it comes from the dated assignment covering the current `Europe/Rome` day, and a trailer shows the driver of its paired motor vehicle;
 - paginated registers preserve the selected page size and active filters across navigation and filter submissions;
 - a document type may explicitly have no expiry date;
 - the assistant uses a whitelist of read-only Prisma queries and never executes arbitrary SQL.
@@ -37,9 +41,9 @@ NFRP is a modular monolith for the operational processes of a transport SME. Thi
 
 Customer and supplier master data, driver employment, classified fleet and external ownership, document archive, OCR inbox, trips, fuel, tolls, maintenance and split expenses, leasing, road fines, road accidents, warehouse, cost center, notifications, document mirror and local assistant. Some integrations are intentionally disabled in the demo profile.
 
-## Public parity boundary — 25 August 2026
+## Public parity boundary — 28 August 2026
 
-The public tree mirrors the identified code-level workflows of the operational transport vertical as of 25 August 2026. Company records, production documents, credentials, endpoints, branding and provider-specific regression data are deliberately absent. Parser fixtures and registry examples are synthetic equivalents, so this is behavioral parity rather than a byte-for-byte production export. See `docs/RELEASE_2026-08-25.md` for the current scope and evidence, and `docs/RELEASE_2026-08-19.md` for the previous boundary.
+The public tree mirrors the identified code-level workflows of the operational transport vertical as of 28 August 2026. Company records, production documents, credentials, endpoints, branding and provider-specific regression data are deliberately absent. Parser fixtures and registry examples are synthetic equivalents, so this is behavioral parity rather than a byte-for-byte production export. The road-fine parser and the photographed-waybill extraction ship with synthetic fixtures only: their behaviour on real documents was verified in the private deployment and cannot be reproduced from this repository. See `docs/RELEASE_2026-08-28.md` for the current scope and evidence, and `docs/RELEASE_2026-08-25.md` for the previous boundary.
 
 ## Startup and security
 

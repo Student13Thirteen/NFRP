@@ -262,12 +262,13 @@ A normal working day follows one loop: **acquire → check → confirm → read 
 | Fix a maintenance you already registered | Open it from `Manutenzioni` | Descriptions, notes and the PDF can be completed later; amounts and allocations stay closed |
 | Follow leasing | `Leasing` | Contracts, instalment plan as a forecast, and real invoices linked to the plate |
 | Manage road fines | `Verbali` | Payment state, responsibility, deadlines, amounts and authenticated attachments, linked to vehicle and driver |
+| Read a road fine PDF instead of typing it | `Verbali → Acquisisci da PDF` | Each notice becomes a draft to check, outside the cost center until you confirm it |
 | Manage road accidents | `Sinistri stradali` | Claim state, insurer references, deadlines, damage/cost values and attachments, linked to fleet entities |
 | Manage parts and stock | `Magazzino` | Load parts, mount them on a vehicle, and see the movement history |
 | Plan and close trips | `Viaggi` | Two separate flows: fuel deliveries and container transports, each with its own data |
-| Import container waybills | `Viaggi → Importa bolle container` | OCR proposes waybill, plate, customer, terminal and stops; the pending banner takes you to the review queue |
+| Import container waybills | `Viaggi → Importa bolle container` | PDF or a phone photograph (JPG, PNG, WebP); OCR proposes waybill, plate, customer, terminal and stops, and the pending banner takes you to the review queue |
 | See where the money goes | `Centro costi` | Trips, fuel, tolls, leasing, maintenance, documents and warehouse together, with filters and a PDF report |
-| Keep registries in order | `Autisti`, `Mezzi a motore`, `Semirimorchi`, `Proprietari terzi`, `Clienti` | People, vehicle classes, external ownership and customers, with employment periods and dated driver-vehicle assignments |
+| Keep registries in order | `Autisti`, `Mezzi a motore`, `Semirimorchi`, `Proprietari terzi`, `Clienti` | Each opens on the full list with instant search and a create button; the three fleet registries also show today's driver, motor vehicle and trailer together |
 | Ask a question in plain language | `NFRP Bot` | Optional, read-only, answers from your data — needs the Ollama integration |
 
 Two habits worth keeping:
@@ -411,7 +412,7 @@ Before using NFRP with real data, read [SECURITY.md](SECURITY.md). This is a sel
 | [Company branding](docs/BRANDING.md) | Name, logo, palette |
 | [Security model and limits](SECURITY.md) | Before real data |
 | [Product origin](docs/PRODUCT_ORIGIN.md) and [platform vision](docs/ERP_PLATFORM_VISION.md) | Where the project comes from and where it is going |
-| [Latest synchronization](docs/RELEASE_2026-08-25.md) | What changed, how it was verified and what public parity does and does not mean |
+| [Latest synchronization](docs/RELEASE_2026-08-28.md) | What changed, how it was verified and what public parity does and does not mean |
 
 NFRP is an AI-assisted, operator-directed project built around real operational requirements. It does not claim that every line was written by hand, nor that one configuration fits every company without review.
 

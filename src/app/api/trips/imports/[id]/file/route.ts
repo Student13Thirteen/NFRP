@@ -14,7 +14,7 @@ export async function GET(_: Request, { params }: { params: Promise<{ id: string
 
   const { id } = await params;
   const batch = await prisma.tripImportBatch.findUnique({ where: { id } });
-  if (!batch) return new NextResponse('PDF non trovato', { status: 404 });
+  if (!batch) return new NextResponse('File originale non trovato', { status: 404 });
 
   const { fileBuffer, fileStat } = await readStoredPdf(batch.filePath);
   return new NextResponse(fileBuffer, {

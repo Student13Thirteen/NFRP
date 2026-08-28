@@ -29,6 +29,7 @@ type QueueCounts = {
   acquisitions: number;
   documents: number;
   expenses: number;
+  fines: number;
   fuel: number;
   leases: number;
   tolls: number;

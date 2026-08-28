@@ -1,6 +1,6 @@
 import { requireUser } from '@/lib/auth';
 import Link from 'next/link';
-import { ArrowRight, FilePlus2, Filter } from 'lucide-react';
+import { ArrowRight, FilePlus2, Filter, UploadCloud } from 'lucide-react';
 import { PageHeader } from '@/components/PageHeader';
 import { PageSizeField } from '@/components/PageSizeField';
 import { TablePagination } from '@/components/TablePagination';
@@ -24,7 +24,7 @@ export default async function RoadFinesPage({ searchParams }: Props) {
   const overdue = open.filter((item) => item.paymentDueDate && item.paymentDueDate < today).length;
   const paid = all.filter((item) => ['PAID', 'CLOSED'].includes(item.status)).reduce((sum, item) => sum + (item.paidAmountCents || 0), 0);
   return <>
-    <PageHeader title="Verbali" description="Infrazioni, responsabilità, ricorsi, scadenze e pagamenti collegati a mezzi e autisti." action={<Link className="primary-button" href="/fines/new"><FilePlus2 size={16} aria-hidden />Inserisci verbale</Link>} />
+    <PageHeader title="Verbali" description="Infrazioni, responsabilità, ricorsi, scadenze e pagamenti collegati a mezzi e autisti." action={<div className="actions-row"><Link className="secondary-button" href="/fines/import"><UploadCloud size={16} aria-hidden />Acquisisci da PDF</Link><Link className="primary-button" href="/fines/new"><FilePlus2 size={16} aria-hidden />Inserisci manualmente</Link></div>} />
     <section className="metrics" aria-label="Riepilogo verbali">
       <div className="metric"><span>Verbali aperti</span><strong>{open.length}</strong></div>
       <div className="metric"><span>Pagamenti scaduti</span><strong>{overdue}</strong></div>

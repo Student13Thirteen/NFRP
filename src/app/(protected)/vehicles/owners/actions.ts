@@ -26,9 +26,9 @@ function parseVehicleOwner(formData: FormData) {
   });
 }
 
-function errorRedirect(error: unknown): never {
+function errorRedirect(error: unknown, path = '/vehicles/owners'): never {
   const message = error instanceof Error && error.message ? error.message.slice(0, 260) : 'Operazione non riuscita.';
-  redirect(`/vehicles/owners?error=${encodeURIComponent(message)}`);
+  redirect(`${path}?error=${encodeURIComponent(message)}`);
 }
 
 export async function createVehicleOwnerAction(formData: FormData) {
@@ -44,7 +44,8 @@ export async function createVehicleOwnerAction(formData: FormData) {
     });
     ownerId = owner.id;
   } catch (error) {
-    errorRedirect(error);
+    // L'inserimento ha una pagina propria: l'errore resta li, con i dati sotto gli occhi.
+    errorRedirect(error, '/vehicles/owners/new');
   }
 
   revalidatePath('/vehicles/owners', 'layout');

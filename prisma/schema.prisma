@@ -224,6 +224,11 @@ enum RoadFineResponsibility {
   DRIVER
 }
 
+enum RoadFineSource {
+  MANUAL
+  IMPORT
+}
+
 enum RoadAccidentStatus {
   REPORTED
   DOCUMENTS_PENDING
@@ -731,6 +736,7 @@ model ContainerTrip {
   customerName            String?
   customerReference       String?
   carrierName             String?
+  routeSequence           String?
   driverId                String?
   driver                  Driver?                  @relation(fields: [driverId], references: [id], onDelete: SetNull)
   tractorId               String?
@@ -745,6 +751,7 @@ model ContainerTrip {
   externalTrailerOwner    VehicleOwner?            @relation("ContainerTripExternalTrailerOwner", fields: [externalTrailerOwnerId], references: [id], onDelete: SetNull)
   loadingTerminalName     String?
   deliveryTerminalName    String?
+  returnBaseName          String?
   booking                 String?
   ship                    String?
   pickupCode              String?
@@ -766,6 +773,8 @@ model ContainerTrip {
   freightRevenueCents     Int?
   carrierCostCents        Int?
   tollCostCents           Int?
+  additionalCostType      String?
+  additionalCostCents     Int?
   economicNotes           String?
   notes                   String?
   sourceType              String?
@@ -797,6 +806,7 @@ model ContainerTripContainer {
   position        Int           @default(0)
   containerNumber String?
   containerType   String?
+  specification   String?
   sealNumber      String?
   notes           String?
   createdAt       DateTime      @default(now())
@@ -891,6 +901,7 @@ model TripImportBatch {
   originalFileName String
   fileSize         Int
   mimeType         String
+  contentHash      String?         @unique
   extractedText    String?
   extractionStatus String?
   parsedRows       Int             @default(0)
@@ -1416,14 +1427,19 @@ model RoadFine {
   id                       String                  @id @default(cuid())
   status                   RoadFineStatus          @default(TO_REVIEW)
   responsibility           RoadFineResponsibility  @default(TO_ASSESS)
+  source                   RoadFineSource          @default(MANUAL)
+  importKey                String?                 @unique
+  extractionStatus         String?
+  reviewReasons            String?
+  extractedText            String?
   noticeNumber             String?
-  authority                String
-  violationDate            DateTime                @db.Date
+  authority                String?
+  violationDate            DateTime?               @db.Date
   violationTime            String?
   notificationDate         DateTime?               @db.Date
-  location                 String
+  location                 String?
   violationCode            String?
-  description              String
+  description              String?
   tractorId                String?
   tractor                  Tractor?                @relation(fields: [tractorId], references: [id], onDelete: SetNull)
   trailerId                String?
@@ -1534,6 +1550,7 @@ model RoadEventAttachment {
   originalFileName String
   fileSize         Int
   mimeType         String
+  contentHash      String?                 @unique
   createdAt        DateTime                @default(now())
 
   @@index([fineId, createdAt])

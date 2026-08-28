@@ -76,7 +76,7 @@ async function main() {
     { path: '/trips/container', markers: ['Trasporti container'] },
     { path: '/trips/container/settings', markers: ['Prezzario extra container', 'Nuova voce standard'] },
     { path: '/trips/import/review', markers: ['Conferma bolle container', 'Crea e completa'] },
-    { path: '/trips/import', markers: ['propone la corrispondenza più probabile', 'la controlli o la correggi tu'] },
+    { path: '/trips/import', markers: ['Carica PDF o immagini JPG, PNG e WebP', 'scritte a mano e fotografie non vengono mai considerate definitive'] },
     {
       path: '/trips/container/new',
       markers: [
@@ -86,10 +86,18 @@ async function main() {
         'Data viaggio: mese',
         'Data viaggio: anno',
         'Mezzi non aziendali',
-        'Targa semirimorchio non nostro'
+        'Targa semirimorchio non nostro',
+        'Sequenza viaggio',
+        'Base di rientro',
+        'Tipo costo aggiuntivo'
       ]
     },
-    { path: '/customers', markers: ['Clienti', 'Nuovo cliente', 'Partita IVA', 'Codice fiscale', 'PEC'] },
+    { path: '/customers', markers: ['Clienti', 'Cerca cliente', 'Nuovo cliente', 'Dati fiscali'] },
+    { path: '/customers/new', markers: ['Nuovo cliente', 'Partita IVA', 'Codice fiscale', 'PEC', 'Salva cliente'] },
+    { path: '/drivers', markers: ['Autisti', 'Cerca autista', 'Nuovo autista', 'Mezzo a motore', 'Semirimorchio'] },
+    { path: '/drivers/new', markers: ['Nuovo autista', 'Cognome', 'Salva autista'] },
+    { path: '/others', markers: ['Altro', 'Cerca entit', 'Nuova entit', 'Categoria'] },
+    { path: '/others/new', markers: ['Nuova entit', 'Categoria', 'Salva entit'] },
     {
       path: '/costs',
       markers: ['Centro costi', 'Trasporti container', 'Documenti flotta', 'Verbali', 'Sinistri stradali', 'Inserisci nuova manutenzione'],
@@ -97,7 +105,12 @@ async function main() {
     },
     {
       path: '/fines',
-      markers: ['Verbali', 'Inserisci verbale', 'Pagamenti scaduti'],
+      markers: ['Verbali', 'Acquisisci da PDF', 'Inserisci manualmente', 'Pagamenti scaduti'],
+      activeNavigationHref: '/fines'
+    },
+    {
+      path: '/fines/import',
+      markers: ['Acquisisci verbali da PDF', 'Leggi e prepara i verbali', 'nessuna bozza entra nel centro costi'],
       activeNavigationHref: '/fines'
     },
     {
@@ -165,11 +178,19 @@ async function main() {
     { path: '/tolls/import/review', markers: ['Controllo file autostrade', 'Pedaggi', 'Import CSV'] },
     {
       path: '/vehicles/tractors',
-      markers: ['Mezzi a motore', 'Autista iniziale', 'Associazione dal: giorno', 'Trattori', 'Motrici', 'Autovetture', 'Da classificare']
+      markers: ['Mezzi a motore', 'Cerca mezzo a motore', 'Nuovo mezzo', 'Autista', 'Semirimorchio', 'Trattori', 'Motrici', 'Autovetture', 'Da classificare']
+    },
+    {
+      path: '/vehicles/tractors/new',
+      markers: ['Nuovo mezzo a motore', 'Autista iniziale', 'Associazione dal: giorno', 'Salva mezzo']
     },
     {
       path: '/vehicles/trailers',
-      markers: ['Semirimorchi', 'Allestimento', 'Carico cisterna', 'Container', 'Cisterne', 'Frigo']
+      markers: ['Semirimorchi', 'Cerca semirimorchio', 'Nuovo semirimorchio', 'Trattore', 'Autista', 'Allestimento', 'Container', 'Cisterne', 'Frigo']
+    },
+    {
+      path: '/vehicles/trailers/new',
+      markers: ['Nuovo semirimorchio', 'Allestimento', 'Carico cisterna', 'Trattore associato', 'Salva semirimorchio']
     },
     {
       path: '/vehicles/trailers?type=TANK',
@@ -177,7 +198,11 @@ async function main() {
     },
     {
       path: '/vehicles/owners',
-      markers: ['Proprietari mezzi terzi', 'Nuovo proprietario', 'Nome o ragione sociale']
+      markers: ['Proprietari mezzi terzi', 'Cerca proprietario', 'Nuovo proprietario']
+    },
+    {
+      path: '/vehicles/owners/new',
+      markers: ['Nuovo proprietario', 'Nome o ragione sociale', 'Salva proprietario']
     },
     {
       path: '/fuel/new',
@@ -188,6 +213,7 @@ async function main() {
     expectations.push({
       path: `/vehicles/tractors/${tractor.id}`,
       markers: [
+        'Complesso di oggi',
         'Assegnazioni autista',
         'Aggiungi associazione',
         'Registra il periodo',
@@ -201,7 +227,7 @@ async function main() {
   if (trailer) {
     expectations.push({
       path: `/vehicles/trailers/${trailer.id}`,
-      markers: ['Allestimento', 'Carico cisterna', 'Trattore abbinato', 'Documenti targa', 'Verbali e sinistri']
+      markers: ['Complesso di oggi', 'Allestimento', 'Carico cisterna', 'Trattore abbinato', 'Documenti targa', 'Verbali e sinistri']
     });
   }
   if (tractorWithHistory) {
@@ -213,7 +239,7 @@ async function main() {
   if (driver) {
     expectations.push({
       path: `/drivers/${driver.id}`,
-      markers: ['Assunzione e cessazione', 'Storico rapporto di lavoro', 'Assegnazioni ai mezzi', 'Storico assegnazioni', 'Documenti autista', 'Verbali e sinistri']
+      markers: ['Complesso di oggi', 'Assunzione e cessazione', 'Storico rapporto di lavoro', 'Assegnazioni ai mezzi', 'Storico assegnazioni', 'Documenti autista', 'Verbali e sinistri']
     });
   }
   if (maintenance) {

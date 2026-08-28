@@ -11,6 +11,7 @@ import { ContainerTripForm } from '@/components/ContainerTripForm';
 import { ConfirmSubmitButton } from '@/components/ConfirmSubmitButton';
 import { PageHeader } from '@/components/PageHeader';
 import {
+  buildContainerTripFormSuggestions,
   containerTripInclude,
   formatContainerMoney,
   getContainerSummary,
@@ -26,6 +27,7 @@ import {
   getTripBillingStatusLabel,
   isContainerTripClosedForCosts
 } from '@/lib/container-trips';
+import { calculateContainerTripSpreadsheetMetrics, formatContainerRate } from '@/lib/container-trip-metrics';
 import { formatDate, toDateInputValue } from '@/lib/dates';
 import { prisma } from '@/lib/db';
 import { buildCustomerOptions, buildDriverOptions, buildTractorOptions, buildTrailerOptions, getDriverLabel } from '@/lib/trips';
@@ -50,7 +52,7 @@ export default async function ContainerTripDetailPage({ params, searchParams }: 
   await requireUser();
   const { id } = await params;
   const query = await searchParams;
-  const [trip, drivers, tractors, trailers, tariffs, customers, vehicleOwners] = await Promise.all([
+  const [trip, drivers, tractors, trailers, tariffs, customers, vehicleOwners, previousTrips, importedWaybills] = await Promise.all([
     prisma.containerTrip.findUnique({ where: { id }, include: containerTripInclude }),
     prisma.driver.findMany({ orderBy: [{ active: 'desc' }, { lastName: 'asc' }, { firstName: 'asc' }] }),
     prisma.tractor.findMany({ orderBy: [{ active: 'desc' }, { plate: 'asc' }] }),
@@ -60,6 +62,28 @@ export default async function ContainerTripDetailPage({ params, searchParams }: 
     prisma.vehicleOwner.findMany({
       select: { id: true, name: true, active: true },
       orderBy: [{ active: 'desc' }, { name: 'asc' }]
+    }),
+    prisma.containerTrip.findMany({
+      select: {
+        loadingTerminalName: true,
+        deliveryTerminalName: true,
+        returnBaseName: true,
+        carrierName: true,
+        stops: { select: { name: true } }
+      },
+      orderBy: { tripDate: 'desc' },
+      take: 300
+    }),
+    prisma.tripImportRow.findMany({
+      select: {
+        loadingBaseName: true,
+        loadingTerminalName: true,
+        deliveryTerminalName: true,
+        deliveryName: true,
+        carrierName: true
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 300
     })
   ]);
   if (!trip) notFound();
@@ -74,6 +98,8 @@ export default async function ContainerTripDetailPage({ params, searchParams }: 
     closureIssues.length === 0 &&
     trip.status !== ContainerTripStatus.CANCELLED &&
     trip.status !== ContainerTripStatus.INVOICED;
+  const suggestions = buildContainerTripFormSuggestions({ trips: previousTrips, importRows: importedWaybills });
+  const spreadsheetMetrics = calculateContainerTripSpreadsheetMetrics(trip);
 
   return (
     <>
@@ -136,6 +162,13 @@ export default async function ContainerTripDetailPage({ params, searchParams }: 
         <div className="metric"><span>Margine</span><strong>{formatContainerMoney(margin)}</strong></div>
       </section>
 
+      <section className="metrics" aria-label="Indicatori del foglio viaggio container">
+        <div className="metric"><span>Scostamento km</span><strong>{spreadsheetMetrics.varianceKm === null ? '-' : spreadsheetMetrics.varianceKm.toLocaleString('it-IT')}</strong></div>
+        <div className="metric"><span>Costo / km reale</span><strong>{formatContainerRate(spreadsheetMetrics.costPerActualKmCents)}</strong></div>
+        <div className="metric"><span>Costo + aggiuntivo / km</span><strong>{formatContainerRate(spreadsheetMetrics.costWithAdditionalPerActualKmCents)}</strong></div>
+        <div className="metric"><span>Costo / km previsto</span><strong>{formatContainerRate(spreadsheetMetrics.costPerPlannedKmCents)}</strong></div>
+      </section>
+
       <section className="detail-section container-trip-summary">
         <div className="actions-row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
           <h2 style={{ margin: 0 }}>Riepilogo attuale</h2>
@@ -146,11 +179,13 @@ export default async function ContainerTripDetailPage({ params, searchParams }: 
           <div><dt>Lettera di vettura</dt><dd>{trip.waybillNumber || '-'}{trip.waybillDate ? <div className="muted">{formatDate(trip.waybillDate)}</div> : null}</dd></div>
           <div><dt>Committente</dt><dd>{getContainerTripCustomerLabel(trip)}</dd></div>
           <div><dt>Riferimento</dt><dd>{trip.customerReference || '-'}</dd></div>
+          <div><dt>Sequenza viaggio</dt><dd>{trip.routeSequence || '-'}</dd></div>
           <div><dt>Container</dt><dd>{getContainerSummary(trip)}</dd></div>
           <div><dt>Booking</dt><dd>{trip.booking || '-'}</dd></div>
           <div><dt>Nave / compagnia</dt><dd>{[trip.ship, trip.shippingCompany].filter(Boolean).join(' · ') || '-'}</dd></div>
           <div><dt>Terminal carico</dt><dd>{trip.loadingTerminalName || '-'}</dd></div>
           <div><dt>Terminal consegna</dt><dd>{trip.deliveryTerminalName || '-'}</dd></div>
+          <div><dt>Base di rientro</dt><dd>{trip.returnBaseName || '-'}</dd></div>
           <div><dt>PIN / codici</dt><dd>{[trip.pickupCode, trip.deliveryCode].filter(Boolean).join(' · ') || '-'}</dd></div>
           <div><dt>Transitario</dt><dd>{trip.forwarder || '-'}</dd></div>
           <div><dt>Autista</dt><dd>{getDriverLabel(trip.driver)}</dd></div>
@@ -175,6 +210,14 @@ export default async function ContainerTripDetailPage({ params, searchParams }: 
           </div>
           <div><dt>Stato</dt><dd>{getContainerTripStatusLabel(trip.status)}</dd></div>
           <div><dt>Fatturazione</dt><dd>{getTripBillingStatusLabel(trip.billingStatus)}</dd></div>
+          <div>
+            <dt>Costo aggiuntivo</dt>
+            <dd>
+              {trip.additionalCostCents === null
+                ? '-'
+                : `${trip.additionalCostType || 'Altra voce'} · ${formatContainerMoney(trip.additionalCostCents)}`}
+            </dd>
+          </div>
         </dl>
 
         <h3>Tappe operative</h3>
@@ -209,6 +252,7 @@ export default async function ContainerTripDetailPage({ params, searchParams }: 
           trailers={buildTrailerOptions(trailers)}
           customers={buildCustomerOptions(customers)}
           vehicleOwners={vehicleOwners}
+          suggestions={suggestions}
           showStatus
           submitLabel="Salva dati viaggio"
           defaultValues={{
@@ -222,6 +266,7 @@ export default async function ContainerTripDetailPage({ params, searchParams }: 
             customerName: trip.customerName,
             customerReference: trip.customerReference,
             carrierName: trip.carrierName,
+            routeSequence: trip.routeSequence,
             driverId: trip.driverId,
             tractorId: trip.tractorId,
             trailerId: trip.trailerId,
@@ -231,6 +276,7 @@ export default async function ContainerTripDetailPage({ params, searchParams }: 
             externalTrailerOwnerId: trip.externalTrailerOwnerId,
             loadingTerminalName: trip.loadingTerminalName,
             deliveryTerminalName: trip.deliveryTerminalName,
+            returnBaseName: trip.returnBaseName,
             booking: trip.booking,
             ship: trip.ship,
             pickupCode: trip.pickupCode,
@@ -245,6 +291,8 @@ export default async function ContainerTripDetailPage({ params, searchParams }: 
             freightRevenue: amountValue(trip.freightRevenueCents),
             carrierCost: amountValue(trip.carrierCostCents),
             tollCost: amountValue(trip.tollCostCents),
+            additionalCostType: trip.additionalCostType,
+            additionalCost: amountValue(trip.additionalCostCents),
             economicNotes: trip.economicNotes,
             notes: trip.notes,
             containers: trip.containers,
@@ -369,7 +417,7 @@ export default async function ContainerTripDetailPage({ params, searchParams }: 
             {isClosed ? (
               <p>
                 Il viaggio e <strong>{getContainerTripStatusLabel(trip.status)}</strong>: ricavo base, extra approvati,
-                costo vettore e pedaggi sono visibili nel centro costi.
+                costo vettore, pedaggi e costo aggiuntivo sono visibili nel centro costi.
               </p>
             ) : (
               <p>

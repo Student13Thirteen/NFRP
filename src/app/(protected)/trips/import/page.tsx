@@ -16,7 +16,7 @@ export default async function TripImportPage({ searchParams }: TripImportPagePro
     <>
       <PageHeader
         title="Importa bolle container"
-        description="Carica uno o più PDF: il sistema legge LDV, targa, committente, terminal, container e tappe. Confronta nome e cognome dell’autista con l’anagrafica e propone la corrispondenza più probabile: prima di creare il viaggio la controlli o la correggi tu."
+        description="Carica PDF o immagini JPG, PNG e WebP: il sistema propone LDV, data, autista, targa, committente, percorso e container. Prima di creare il viaggio controlli i campi; scritte a mano e fotografie non vengono mai considerate definitive."
         action={
           <div className="actions-row">
             <Link className="secondary-button" href="/trips/import/review">
@@ -33,7 +33,7 @@ export default async function TripImportPage({ searchParams }: TripImportPagePro
 
       <section className="panel">
         <ManagedImportForm action="/api/trips/import" buttonLabel="Importa bolle container">
-          <InboxFileUpload />
+          <InboxFileUpload context="container-trips" />
         </ManagedImportForm>
       </section>
     </>

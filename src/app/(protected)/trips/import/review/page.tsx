@@ -119,7 +119,7 @@ export default async function TripImportReviewPage() {
           <div className="actions-row">
             <Link className="secondary-button" href="/trips/import">
               <UploadCloud size={16} aria-hidden />
-              Import PDF
+              Importa file
             </Link>
             <Link className="secondary-button" href="/trips/container">
               Trasporti container
@@ -131,7 +131,7 @@ export default async function TripImportReviewPage() {
       <section className="panel" style={{ marginBottom: 18 }}>
         <form id={REVIEW_FORM_ID} />
         <p>
-          Il PDF propone anche l&apos;autista piu simile presente in anagrafica, ma non lo rende definitivo: controlla o
+          Il documento propone anche l&apos;autista più simile presente in anagrafica, ma non lo rende definitivo: controlla o
           correggi la tendina prima di confermare. Le tappe multiple restano righe distinte; km, dogana, soste, importi
           e note si completano nella scheda del viaggio anche in un secondo momento.
         </p>
@@ -166,7 +166,7 @@ export default async function TripImportReviewPage() {
             <strong>{pendingRows.length}</strong>
           </div>
           <div className="metric">
-            <span>PDF</span>
+            <span>File</span>
             <strong>{groups.length}</strong>
           </div>
           <div className="metric">
@@ -200,22 +200,22 @@ export default async function TripImportReviewPage() {
               <div className="actions-row" style={{ marginLeft: 'auto', gap: 8 }}>
                 <Link className="secondary-button compact-button" href={`/api/trips/imports/${group.batchId}/file`} target="_blank">
                   <Download size={14} aria-hidden />
-                  Apri PDF
+                  Apri file
                 </Link>
                 <ConfirmSubmitButton
                   className="primary-button compact-button"
                   form={REVIEW_FORM_ID}
                   formAction={confirmTripImportBatchAction.bind(null, group.batchId)}
-                  message={`Confermare le ${group.rows.length} righe di questo PDF con gli autisti selezionati?`}
+                  message={`Confermare le ${group.rows.length} righe di questo file con gli autisti selezionati?`}
                 >
                   <Check size={14} aria-hidden />
-                  Conferma PDF
+                  Conferma file
                 </ConfirmSubmitButton>
                 <ConfirmSubmitButton
                   className="danger-button compact-button"
                   form={REVIEW_FORM_ID}
                   formAction={discardTripImportBatchAction.bind(null, group.batchId)}
-                  message={`Scartare le ${group.rows.length} righe di questo PDF?`}
+                  message={`Scartare le ${group.rows.length} righe di questo file?`}
                 >
                   <Trash2 size={14} aria-hidden />
                 </ConfirmSubmitButton>
@@ -263,7 +263,7 @@ export default async function TripImportReviewPage() {
                             ))}
                           </select>
                         </label>
-                        {row.driverName ? <div className="muted">Letto nel PDF: {row.driverName}</div> : null}
+                        {row.driverName ? <div className="muted">Letto nel documento: {row.driverName}</div> : null}
                         {selectedDriverId ? (
                           <div className="trip-import-driver-match">Proposta automatica: controlla prima di confermare.</div>
                         ) : (

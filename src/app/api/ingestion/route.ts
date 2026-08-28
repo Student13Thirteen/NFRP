@@ -8,7 +8,7 @@ import { importFuelPdfFiles } from '@/lib/fuel-import';
 import { importLeasePdfFiles } from '@/lib/lease-import';
 import { importSmartInvoicePdfFiles } from '@/lib/smart-invoice-import';
 import { importTollCsvFiles } from '@/lib/toll-import';
-import { importTripWaybillPdfFiles } from '@/lib/trip-import';
+import { importTripWaybillFiles } from '@/lib/trip-import';
 
 export const dynamic = 'force-dynamic';
 
@@ -108,7 +108,7 @@ export async function POST(request: NextRequest) {
       return Response.json({ kind, ...result, reviewUrl });
     }
 
-    const result = await importTripWaybillPdfFiles(files);
+    const result = await importTripWaybillFiles(files);
     revalidatePath('/acquisitions');
     revalidatePath('/trips');
     revalidatePath('/trips/container');

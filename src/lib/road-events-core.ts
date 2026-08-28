@@ -6,6 +6,24 @@ import type {
   RoadFineStatus
 } from '@prisma/client';
 
+type RoadFineImportValidationInput = {
+  source: string;
+  currentStatus: string;
+  nextStatus: string;
+  acknowledged: boolean;
+};
+
+export function assertRoadFineImportValidation(input: RoadFineImportValidationInput): boolean {
+  if (input.source !== 'IMPORT' || input.currentStatus !== 'TO_REVIEW') return false;
+  if (input.nextStatus === 'TO_REVIEW') {
+    throw new Error('Per completare la validazione scegli uno stato operativo diverso da Da controllare.');
+  }
+  if (!input.acknowledged) {
+    throw new Error('Conferma di avere controllato e completato i dati acquisiti dal PDF.');
+  }
+  return true;
+}
+
 export function getRoadFineStatusLabel(value: RoadFineStatus | string): string {
   return ({ TO_REVIEW: 'Da controllare', TO_PAY: 'Da pagare', CONTESTED: 'Contestato', PAID: 'Pagato', CANCELLED: 'Annullato', CLOSED: 'Chiuso' } as Record<string, string>)[value] || value;
 }
@@ -24,6 +42,13 @@ export function getRoadAccidentResponsibilityLabel(value: RoadAccidentResponsibi
 
 export function getRoadEventAttachmentKindLabel(value: RoadEventAttachmentKind | string): string {
   return ({ NOTICE: 'Verbale', NOTIFICATION: 'Notifica', PAYMENT_RECEIPT: 'Ricevuta pagamento', APPEAL: 'Ricorso', CAI: 'CAI', PHOTO: 'Foto', POLICE_REPORT: 'Rilievi autorità', ESTIMATE: 'Preventivo', APPRAISAL: 'Perizia', INVOICE: 'Fattura', INSURER_COMMUNICATION: 'Comunicazione assicurazione', OTHER: 'Altro' } as Record<string, string>)[value] || value;
+}
+
+export type RoadEventOption = { id: string; label: string };
+
+export function withInactiveLinkedOption(activeOptions: RoadEventOption[], linked: RoadEventOption | null): RoadEventOption[] {
+  if (!linked || activeOptions.some((option) => option.id === linked.id)) return activeOptions;
+  return [...activeOptions, { id: linked.id, label: `${linked.label} \u00b7 non attivo` }];
 }
 
 export function getRoadEventVehicleLabel(input: { tractor?: { plate: string; brand?: string | null; model?: string | null } | null; trailer?: { plate: string; brand?: string | null; model?: string | null } | null }): string {

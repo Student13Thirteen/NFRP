@@ -18,13 +18,14 @@ export const dynamic = 'force-dynamic';
 
 export default async function ProtectedLayout({ children }: { children: React.ReactNode }) {
   const user = await requireUser();
-  const [branding, flash, documents, trips, fuel, tolls, expenses, leaseContracts, leaseInvoices] = await Promise.all([
+  const [branding, flash, documents, trips, fuel, tolls, fines, expenses, leaseContracts, leaseInvoices] = await Promise.all([
     getBranding(),
     getFlashMessage(),
     prisma.documentInboxItem.count({ where: { status: 'PENDING' } }),
     prisma.tripImportRow.count({ where: { status: 'PENDING' } }),
     prisma.fuelEntry.count({ where: { status: 'PENDING' } }),
     prisma.tollEntry.count({ where: { status: 'PENDING' } }),
+    prisma.roadFine.count({ where: { status: 'TO_REVIEW', source: 'IMPORT' } }),
     prisma.expenseDocument.count({ where: { status: 'PENDING', source: { not: 'LEASE_INVOICE_IMPORT' } } }),
     prisma.leaseContract.count({ where: { status: 'PENDING' } }),
     prisma.expenseDocument.count({ where: { status: 'PENDING', source: 'LEASE_INVOICE_IMPORT' } })
@@ -37,8 +38,9 @@ export default async function ProtectedLayout({ children }: { children: React.Re
     fuel,
     leases,
     tolls,
+    fines,
     expenses,
-    acquisitions: documents + trips + fuel + tolls + expenses + leases
+    acquisitions: documents + trips + fuel + tolls + fines + expenses + leases
   };
 
   return (

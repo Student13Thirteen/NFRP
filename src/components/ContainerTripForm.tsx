@@ -1,6 +1,8 @@
 import { ContainerTripStatus, TripBillingStatus } from '@prisma/client';
 import { Save } from 'lucide-react';
 import { ContainerRows, ContainerStopRows, type ContainerRowValue, type ContainerStopRowValue } from '@/components/ContainerTripRows';
+import { ContainerTripCalculatedFields } from '@/components/ContainerTripCalculatedFields';
+import { GuidedChoiceField } from '@/components/GuidedChoiceField';
 import { DatePartsInput } from '@/components/DatePartsInput';
 import { RecoverableForm } from '@/components/RecoverableForm';
 import { VehicleOwnerField, type VehicleOwnerOptionView } from '@/components/VehicleOwnerField';
@@ -18,6 +20,7 @@ export type ContainerTripFormValues = {
   customerName?: string | null;
   customerReference?: string | null;
   carrierName?: string | null;
+  routeSequence?: string | null;
   driverId?: string | null;
   tractorId?: string | null;
   trailerId?: string | null;
@@ -27,6 +30,7 @@ export type ContainerTripFormValues = {
   externalTrailerOwnerId?: string | null;
   loadingTerminalName?: string | null;
   deliveryTerminalName?: string | null;
+  returnBaseName?: string | null;
   booking?: string | null;
   ship?: string | null;
   pickupCode?: string | null;
@@ -41,10 +45,17 @@ export type ContainerTripFormValues = {
   freightRevenue?: string;
   carrierCost?: string;
   tollCost?: string;
+  additionalCostType?: string | null;
+  additionalCost?: string;
   economicNotes?: string | null;
   notes?: string | null;
   containers?: ContainerRowValue[];
   stops?: ContainerStopRowValue[];
+};
+
+export type ContainerTripFormSuggestions = {
+  locations: string[];
+  carriers: string[];
 };
 
 type Props = {
@@ -59,7 +70,18 @@ type Props = {
   submitLabel: string;
   recoverOnError?: boolean;
   recoveryKey?: string;
+  suggestions?: ContainerTripFormSuggestions;
 };
+
+// Voci del foglio operativo container (colonna COSTI AGGIUNTIVI, scelta a tenda).
+const ADDITIONAL_COST_TYPES = [
+  'Sosta maggiore di 3 ore',
+  'Sosta maggiore di 8 ore',
+  'ADR',
+  'Frigo',
+  'Dogana',
+  'Pesa'
+];
 
 function options(values: TripSelectOption[]) {
   return values.map((value) => (
@@ -78,7 +100,8 @@ export function ContainerTripForm({
   showStatus = false,
   submitLabel,
   recoverOnError = false,
-  recoveryKey = 'container-trip'
+  recoveryKey = 'container-trip',
+  suggestions = { locations: [], carriers: [] }
 }: Props) {
   const hasExternalVehicle = Boolean(defaultValues?.externalTractorPlate || defaultValues?.externalTrailerPlate);
   const draftStatuses: ContainerTripStatus[] = [
@@ -124,6 +147,16 @@ export function ContainerTripForm({
           <input name="customerReference" defaultValue={defaultValues?.customerReference || ''} placeholder="Ordine, pratica o booking" />
         </label>
       </div>
+      <label>
+        Sequenza viaggio
+        <textarea
+          name="routeSequence"
+          rows={3}
+          defaultValue={defaultValues?.routeSequence || ''}
+          placeholder="Es. Genova → Firenze → Genova"
+        />
+        <span className="field-help">Descrivi liberamente l&apos;ordine operativo; le singole consegne restano anche nelle tappe sottostanti.</span>
+      </label>
 
       <div className="form-section-title">Autista e mezzo</div>
       <div className="form-grid">
@@ -148,10 +181,15 @@ export function ContainerTripForm({
             {options(trailers)}
           </select>
         </label>
-        <label>
-          Vettore / sub-vettore
-          <input name="carrierName" defaultValue={defaultValues?.carrierName || ''} />
-        </label>
+        <GuidedChoiceField
+          label="Trasportatore"
+          name="carrierName"
+          options={suggestions.carriers}
+          defaultValue={defaultValues?.carrierName}
+          emptyLabel="Non indicato"
+          customLabel="Altro trasportatore: scrivilo"
+          customPlaceholder="Ragione sociale del vettore"
+        />
       </div>
 
       <details className="external-vehicle-block" open={hasExternalVehicle}>
@@ -198,19 +236,45 @@ export function ContainerTripForm({
         </div>
       </details>
 
+      <div className="form-section-title">Percorso: carico, consegne e rientro</div>
+      <div className="form-grid three">
+        <GuidedChoiceField
+          label="Base di carico"
+          name="loadingTerminalName"
+          options={suggestions.locations}
+          defaultValue={defaultValues?.loadingTerminalName}
+          customLabel="Altra base: scrivila"
+          customPlaceholder="Nome della base o del terminal"
+        />
+        <GuidedChoiceField
+          label="Luogo di consegna"
+          name="deliveryTerminalName"
+          options={suggestions.locations}
+          defaultValue={defaultValues?.deliveryTerminalName}
+          customLabel="Altro luogo: scrivilo"
+          customPlaceholder="Nome del luogo o del terminal"
+        />
+        <GuidedChoiceField
+          label="Base di rientro"
+          name="returnBaseName"
+          options={suggestions.locations}
+          defaultValue={defaultValues?.returnBaseName}
+          customLabel="Altra base: scrivila"
+          customPlaceholder="Nome della base di rientro"
+        />
+      </div>
+
+      <div className="form-section-title">Luoghi di consegna e tappe operative</div>
+      <p className="muted" style={{ marginTop: -8 }}>
+        Ogni presa, consegna, dogana o sosta resta una riga autonoma: in questo modo i viaggi con più indirizzi non vengono compressi.
+      </p>
+      <ContainerStopRows defaultRows={defaultValues?.stops} locationSuggestions={suggestions.locations} />
+
       <div className="form-section-title">Container</div>
       <ContainerRows defaultRows={defaultValues?.containers} />
 
-      <div className="form-section-title">Terminal, nave e riferimenti</div>
+      <div className="form-section-title">Nave e riferimenti</div>
       <div className="form-grid">
-        <label>
-          Terminal di carico
-          <input name="loadingTerminalName" defaultValue={defaultValues?.loadingTerminalName || ''} />
-        </label>
-        <label>
-          Terminal di consegna
-          <input name="deliveryTerminalName" defaultValue={defaultValues?.deliveryTerminalName || ''} />
-        </label>
         <label>
           Booking
           <input name="booking" defaultValue={defaultValues?.booking || ''} />
@@ -237,12 +301,6 @@ export function ContainerTripForm({
         </label>
       </div>
 
-      <div className="form-section-title">Tappe operative</div>
-      <p className="muted" style={{ marginTop: -8 }}>
-        Ogni presa, consegna, dogana o sosta resta una riga autonoma: in questo modo i viaggi con più indirizzi non vengono compressi.
-      </p>
-      <ContainerStopRows defaultRows={defaultValues?.stops} />
-
       <div className="form-section-title">Completamento autista e chilometri</div>
       <div className="form-grid">
         <label>
@@ -258,7 +316,7 @@ export function ContainerTripForm({
           <input name="odometerEndKm" type="number" min={0} defaultValue={defaultValues?.odometerEndKm ?? ''} />
         </label>
         <label>
-          Km effettivi dichiarati
+          Km reali dichiarati (se mancano i due contachilometri)
           <input name="actualKm" type="number" min={0} defaultValue={defaultValues?.actualKm ?? ''} />
         </label>
         <label>
@@ -273,16 +331,31 @@ export function ContainerTripForm({
         </label>
       </div>
 
-      <details className="trip-extra-details" open={showStatus}>
-        <summary>Economia e fatturazione</summary>
+      <ContainerTripCalculatedFields group="km" />
+
+      <details className="trip-extra-details" open>
+        <summary>Costi, ricavi e fatturazione</summary>
         <div className="form-grid">
           <label>
             Ricavo base
             <input name="freightRevenue" inputMode="decimal" defaultValue={defaultValues?.freightRevenue || ''} placeholder="Es. 850,00" />
           </label>
           <label>
-            Costo vettore
+            Costo viaggio / vettore
             <input name="carrierCost" inputMode="decimal" defaultValue={defaultValues?.carrierCost || ''} />
+          </label>
+          <GuidedChoiceField
+            label="Tipo costo aggiuntivo"
+            name="additionalCostType"
+            options={ADDITIONAL_COST_TYPES}
+            defaultValue={defaultValues?.additionalCostType}
+            emptyLabel="Nessun costo aggiuntivo"
+            customLabel="Altra voce: scrivila"
+            customPlaceholder="Descrivi il costo aggiuntivo"
+          />
+          <label>
+            Importo costo aggiuntivo
+            <input name="additionalCost" inputMode="decimal" defaultValue={defaultValues?.additionalCost || ''} placeholder="Es. 75,00" />
           </label>
           <label>
             Pedaggi
@@ -297,6 +370,7 @@ export function ContainerTripForm({
             </select>
           </label>
         </div>
+        <ContainerTripCalculatedFields group="rates" />
         <label>
           Note economiche
           <textarea name="economicNotes" rows={3} defaultValue={defaultValues?.economicNotes || ''} />
