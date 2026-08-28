@@ -8,7 +8,7 @@
  * la paginazione lato server gia usata da documenti, viaggi e rifornimenti.
  */
 
-/** Minuscole senza accenti e senza punteggiatura: `FS 575 JP` e `fs575jp` coincidono. */
+/** Minuscole senza accenti e senza punteggiatura: `ZZ 575 ZZ` e `zz575zz` coincidono. */
 export function normalizeRegistryText(value: string): string {
   return value
     .normalize('NFD')
