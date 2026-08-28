@@ -93,7 +93,9 @@ export async function createTractorAction(formData: FormData) {
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
   } catch (error) {
     const message = error instanceof Error && error.message ? error.message.slice(0, 260) : 'Creazione trattore non riuscita.';
-    redirect(`/vehicles/tractors?error=${encodeURIComponent(message)}`);
+    // L'errore torna sulla pagina di inserimento, non sull'elenco: e li che
+    // l'operatore deve correggere il dato.
+    redirect(`/vehicles/tractors/new?error=${encodeURIComponent(message)}`);
   }
   // `layout` e necessario: il messaggio di conferma vive nel layout protetto.
   revalidatePath(`/vehicles/tractors/${tractor.id}`, 'layout');

@@ -17,7 +17,8 @@ export async function createCustomerAction(formData: FormData) {
   try {
     customer = await prisma.customer.create({ data: parseCustomerForm(formData) });
   } catch (error) {
-    redirectWithError('/customers', error);
+    // Errore mostrato dove si sta inserendo, non nell'elenco.
+    redirectWithError('/customers/new', error);
   }
   revalidatePath('/customers');
   revalidatePath('/trips/container/new');

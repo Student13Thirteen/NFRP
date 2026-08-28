@@ -8,6 +8,7 @@ import { DatePartsInput } from '@/components/DatePartsInput';
 import { DocumentChecklist } from '@/components/DocumentChecklist';
 import { EntityDocumentSections } from '@/components/EntityDocumentSections';
 import { EntityRoadEventsPanel } from '@/components/EntityRoadEventsPanel';
+import { FleetPairingSummary } from '@/components/FleetPairingSummary';
 import { PageHeader } from '@/components/PageHeader';
 import { VehicleExpensesPanel } from '@/components/VehicleExpensesPanel';
 import { VehicleLifecycleFields } from '@/components/VehicleLifecycleFields';
@@ -35,6 +36,7 @@ import {
 } from '@/lib/vehicle-types';
 import { formatDate, toDateInputValue } from '@/lib/dates';
 import { getDriverAssignmentStatus } from '@/lib/driver-assignment-core';
+import { findCurrentDriverAssignment, formatDriverName } from '@/lib/fleet-pairing';
 import { isTachographUpdateDocumentTypeName } from '@/lib/tachograph-update';
 
 type TractorDetailPageProps = {
@@ -99,9 +101,7 @@ export default async function TractorDetailPage({ params, searchParams }: Tracto
   ]);
   const checklist = buildDocumentChecklist(documentTypes, documents, checklistExclusions);
   const disposed = isDisposedVehicleStatus(tractor.lifecycleStatus);
-  const currentAssignment = driverAssignments.find(
-    (assignment) => getDriverAssignmentStatus(assignment) === 'CURRENT'
-  );
+  const currentAssignment = findCurrentDriverAssignment(driverAssignments);
   const tachographDocument = documents
     .filter(
       (document) =>
@@ -130,6 +130,28 @@ export default async function TractorDetailPage({ params, searchParams }: Tracto
             </Link>
           )
         }
+      />
+      <FleetPairingSummary
+        current="tractor"
+        driver={
+          currentAssignment
+            ? {
+                id: currentAssignment.driver.id,
+                name: formatDriverName(currentAssignment.driver) || currentAssignment.driver.lastName,
+                detail: currentAssignment.driver.phone || null
+              }
+            : null
+        }
+        tractor={{
+          id: tractor.id,
+          plate: tractor.plate,
+          detail: [tractor.brand, tractor.model].filter(Boolean).join(' ') || null
+        }}
+        trailers={pairedTrailers.map((trailer) => ({
+          id: trailer.id,
+          plate: trailer.plate,
+          detail: getTrailerTypeLabel(trailer)
+        }))}
       />
       {!disposed ? (
         <section className={`workflow-status${tachographDocument ? '' : ' needs-action'}`}>

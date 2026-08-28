@@ -6,12 +6,14 @@ import { Archive, CircleAlert, FilePlus } from 'lucide-react';
 import { DocumentChecklist } from '@/components/DocumentChecklist';
 import { EntityDocumentSections } from '@/components/EntityDocumentSections';
 import { EntityRoadEventsPanel } from '@/components/EntityRoadEventsPanel';
+import { FleetPairingSummary } from '@/components/FleetPairingSummary';
 import { PageHeader } from '@/components/PageHeader';
 import { VehicleExpensesPanel } from '@/components/VehicleExpensesPanel';
 import { VehicleLifecycleFields } from '@/components/VehicleLifecycleFields';
 import { VehicleLifecycleSubmitButton } from '@/components/VehicleLifecycleSubmitButton';
 import { buildDocumentChecklist } from '@/lib/document-checklist';
 import { prisma } from '@/lib/db';
+import { findCurrentDriverAssignment, formatDriverName } from '@/lib/fleet-pairing';
 import { documentInclude } from '@/lib/documents';
 import {
   getVehicleLifecycleLabel,
@@ -34,7 +36,25 @@ type TrailerDetailPageProps = {
 export default async function TrailerDetailPage({ params }: TrailerDetailPageProps) {
   await requireUser();
   const { id } = await params;
-  const trailer = await prisma.trailer.findUnique({ where: { id }, include: { assignedTractor: true } });
+  const trailer = await prisma.trailer.findUnique({
+    where: { id },
+    include: {
+      // L'autista arriva dal periodo di assegnazione del mezzo a motore
+      // abbinato: e l'unica fonte, non si deduce dai viaggi.
+      assignedTractor: {
+        include: {
+          driverAssignments: {
+            select: {
+              validFrom: true,
+              validTo: true,
+              driver: { select: { id: true, firstName: true, lastName: true, phone: true } }
+            },
+            orderBy: { validFrom: 'desc' }
+          }
+        }
+      }
+    }
+  });
   if (!trailer) notFound();
 
   const [documents, documentTypes, checklistExclusions, tractors, siblingTrailers, roadFines, roadAccidents] = await Promise.all([
@@ -76,6 +96,9 @@ export default async function TrailerDetailPage({ params }: TrailerDetailPagePro
   ]);
   const checklist = buildDocumentChecklist(documentTypes, documents, checklistExclusions);
   const disposed = isDisposedVehicleStatus(trailer.lifecycleStatus);
+  const currentAssignment = trailer.assignedTractor
+    ? findCurrentDriverAssignment(trailer.assignedTractor.driverAssignments)
+    : null;
 
   return (
     <>
@@ -95,6 +118,28 @@ export default async function TrailerDetailPage({ params }: TrailerDetailPagePro
             </Link>
           )
         }
+      />
+      <FleetPairingSummary
+        current="trailer"
+        driver={
+          currentAssignment
+            ? {
+                id: currentAssignment.driver.id,
+                name: formatDriverName(currentAssignment.driver) || currentAssignment.driver.lastName,
+                detail: currentAssignment.driver.phone || null
+              }
+            : null
+        }
+        tractor={
+          trailer.assignedTractor
+            ? {
+                id: trailer.assignedTractor.id,
+                plate: trailer.assignedTractor.plate,
+                detail: [trailer.assignedTractor.brand, trailer.assignedTractor.model].filter(Boolean).join(' ') || null
+              }
+            : null
+        }
+        trailers={[{ id: trailer.id, plate: trailer.plate, detail: getTrailerTypeLabel(trailer) }]}
       />
       {disposed ? (
         <section className="workflow-status vehicle-disposed-status">

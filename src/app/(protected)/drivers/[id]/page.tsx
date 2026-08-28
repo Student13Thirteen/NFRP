@@ -8,6 +8,7 @@ import { DatePartsInput } from '@/components/DatePartsInput';
 import { DocumentHistorySection } from '@/components/EntityDocumentSections';
 import { DocumentTable } from '@/components/DocumentTable';
 import { EntityRoadEventsPanel } from '@/components/EntityRoadEventsPanel';
+import { FleetPairingSummary } from '@/components/FleetPairingSummary';
 import { PageHeader } from '@/components/PageHeader';
 import { formatDate, toDateInputValue } from '@/lib/dates';
 import { prisma } from '@/lib/db';
@@ -19,6 +20,8 @@ import {
   getDriverEmploymentSummaryLabel
 } from '@/lib/driver-employment-core';
 import { getDriverAssignmentStatus } from '@/lib/driver-assignment-core';
+import { findCurrentDriverAssignment, formatDriverName } from '@/lib/fleet-pairing';
+import { getTrailerTypeLabel } from '@/lib/vehicle-types';
 import {
   createDriverEmploymentAction,
   deleteDriverAction,
@@ -44,7 +47,18 @@ export default async function DriverDetailPage({ params, searchParams }: DriverD
       include: {
         employmentPeriods: { orderBy: { startDate: 'desc' } },
         tractorAssignments: {
-          include: { tractor: true },
+          // Il semirimorchio dell'autista passa sempre dal mezzo a motore: si
+          // carica insieme all'assegnazione per mostrare il complesso completo.
+          include: {
+            tractor: {
+              include: {
+                assignedTrailers: {
+                  select: { id: true, plate: true, bodyType: true, tankCargo: true },
+                  orderBy: { plate: 'asc' }
+                }
+              }
+            }
+          },
           orderBy: [{ validFrom: 'desc' }, { createdAt: 'desc' }]
         }
       }
@@ -84,9 +98,8 @@ export default async function DriverDetailPage({ params, searchParams }: DriverD
     : employmentSummary === 'PLANNED'
       ? 'thirtyDays'
       : 'inactive';
-  const currentTractorAssignment = driver.tractorAssignments.find(
-    (assignment) => getDriverAssignmentStatus(assignment) === 'CURRENT'
-  );
+  const currentTractorAssignment = findCurrentDriverAssignment(driver.tractorAssignments);
+  const currentTractor = currentTractorAssignment?.tractor || null;
 
   return (
     <>
@@ -105,6 +118,25 @@ export default async function DriverDetailPage({ params, searchParams }: DriverD
             </Link>
           </div>
         }
+      />
+
+      <FleetPairingSummary
+        current="driver"
+        driver={{ id: driver.id, name: formatDriverName(driver) || `${driver.lastName} ${driver.firstName}` }}
+        tractor={
+          currentTractor
+            ? {
+                id: currentTractor.id,
+                plate: currentTractor.plate,
+                detail: [currentTractor.brand, currentTractor.model].filter(Boolean).join(' ') || null
+              }
+            : null
+        }
+        trailers={(currentTractor?.assignedTrailers || []).map((trailer) => ({
+          id: trailer.id,
+          plate: trailer.plate,
+          detail: getTrailerTypeLabel(trailer)
+        }))}
       />
 
       <div className="grid two">
