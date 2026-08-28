@@ -25,6 +25,7 @@ const containerTripSchema = z.object({
   customerName: z.string().max(180).nullable(),
   customerReference: z.string().max(180).nullable(),
   carrierName: z.string().max(180).nullable(),
+  routeSequence: z.string().max(1000).nullable(),
   driverId: z.string().nullable(),
   tractorId: z.string().nullable(),
   trailerId: z.string().nullable(),
@@ -34,6 +35,7 @@ const containerTripSchema = z.object({
   externalTrailerOwnerId: z.string().nullable(),
   loadingTerminalName: z.string().max(180).nullable(),
   deliveryTerminalName: z.string().max(180).nullable(),
+  returnBaseName: z.string().max(180).nullable(),
   booking: z.string().max(100).nullable(),
   ship: z.string().max(180).nullable(),
   pickupCode: z.string().max(100).nullable(),
@@ -48,11 +50,14 @@ const containerTripSchema = z.object({
   freightRevenueCents: z.number().int().min(0).max(999999999).nullable(),
   carrierCostCents: z.number().int().min(0).max(999999999).nullable(),
   tollCostCents: z.number().int().min(0).max(999999999).nullable(),
+  additionalCostType: z.string().max(120).nullable(),
+  additionalCostCents: z.number().int().min(0).max(999999999).nullable(),
   economicNotes: z.string().max(3000).nullable(),
   notes: z.string().max(5000).nullable(),
   containers: z.array(z.object({
     containerNumber: z.string().max(40).nullable(),
     containerType: z.string().max(40).nullable(),
+    specification: z.enum(['ADR', 'FRIGO', 'ADR_FRIGO']).nullable(),
     sealNumber: z.string().max(80).nullable(),
     notes: z.string().max(500).nullable()
   })).max(8),
@@ -112,12 +117,16 @@ function repeatedStrings(formData: FormData, key: string): (string | null)[] {
 function parseContainers(formData: FormData) {
   const numbers = repeatedStrings(formData, 'containerNumber');
   const types = repeatedStrings(formData, 'containerType');
+  const specifications = repeatedStrings(formData, 'containerSpecification');
   const seals = repeatedStrings(formData, 'sealNumber');
   const notes = repeatedStrings(formData, 'containerNotes');
-  const count = Math.max(numbers.length, types.length, seals.length, notes.length);
+  const count = Math.max(numbers.length, types.length, specifications.length, seals.length, notes.length);
   return Array.from({ length: count }, (_, index) => ({
     containerNumber: numbers[index]?.toLocaleUpperCase('it-IT').replace(/\s+/g, '') || null,
-    containerType: types[index]?.toLocaleUpperCase('it-IT').replace(/\s+/g, '') || null,
+    containerType: types[index]?.toLocaleUpperCase('it-IT').replace(/\s+/g, ' ').trim() || null,
+    specification: ['ADR', 'FRIGO', 'ADR_FRIGO'].includes(specifications[index] || '')
+      ? specifications[index] as 'ADR' | 'FRIGO' | 'ADR_FRIGO'
+      : null,
     sealNumber: seals[index] || null,
     notes: notes[index] || null
   })).filter((container) => Object.values(container).some(Boolean));
@@ -174,6 +183,7 @@ export async function parseContainerTripForm(formData: FormData) {
     customerName: optionalFormString(formData, 'customerName'),
     customerReference: optionalFormString(formData, 'customerReference'),
     carrierName: optionalFormString(formData, 'carrierName'),
+    routeSequence: optionalFormString(formData, 'routeSequence'),
     driverId: optionalFormString(formData, 'driverId'),
     tractorId: optionalFormString(formData, 'tractorId'),
     trailerId: optionalFormString(formData, 'trailerId'),
@@ -195,6 +205,7 @@ export async function parseContainerTripForm(formData: FormData) {
       : null,
     loadingTerminalName: optionalFormString(formData, 'loadingTerminalName'),
     deliveryTerminalName: optionalFormString(formData, 'deliveryTerminalName'),
+    returnBaseName: optionalFormString(formData, 'returnBaseName'),
     booking: optionalFormString(formData, 'booking'),
     ship: optionalFormString(formData, 'ship'),
     pickupCode: optionalFormString(formData, 'pickupCode'),
@@ -209,6 +220,8 @@ export async function parseContainerTripForm(formData: FormData) {
     freightRevenueCents: parseMoney(formData, 'freightRevenue', 'Ricavo viaggio'),
     carrierCostCents: parseMoney(formData, 'carrierCost', 'Costo vettore'),
     tollCostCents: parseMoney(formData, 'tollCost', 'Pedaggi'),
+    additionalCostType: optionalFormString(formData, 'additionalCostType'),
+    additionalCostCents: parseMoney(formData, 'additionalCost', 'Costo aggiuntivo'),
     economicNotes: optionalFormString(formData, 'economicNotes'),
     notes: optionalFormString(formData, 'notes'),
     containers: parseContainers(formData),
@@ -223,6 +236,9 @@ export async function parseContainerTripForm(formData: FormData) {
   }
   if (parsed.trailerId && parsed.externalTrailerPlate) {
     throw new Error('Per il semirimorchio scegli il mezzo della flotta oppure la targa non aziendale, non entrambi.');
+  }
+  if ((parsed.additionalCostCents || 0) > 0 && !parsed.additionalCostType) {
+    throw new Error('Se indichi un costo aggiuntivo, scegli o scrivi anche il tipo.');
   }
   if (parsed.odometerStartKm !== null && parsed.odometerEndKm !== null) {
     if (parsed.odometerEndKm < parsed.odometerStartKm) throw new Error('Il contachilometri finale non puo essere inferiore a quello iniziale.');

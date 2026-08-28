@@ -4,6 +4,7 @@ import {
 } from '@prisma/client';
 import { describe, expect, it } from 'vitest';
 import {
+  buildContainerTripFormSuggestions,
   getContainerTripClosureIssues,
   isContainerTripClosedForCosts
 } from '@/lib/container-trips';
@@ -53,5 +54,46 @@ describe('chiusura trasporti container', () => {
     expect(isContainerTripClosedForCosts(ContainerTripStatus.UNDER_REVIEW)).toBe(false);
     expect(isContainerTripClosedForCosts(ContainerTripStatus.READY_TO_BILL)).toBe(true);
     expect(isContainerTripClosedForCosts(ContainerTripStatus.INVOICED)).toBe(true);
+  });
+});
+
+describe('tendine guidate del foglio viaggi container', () => {
+  it('raccoglie luoghi e vettori dai viaggi salvati e dalle bolle gia acquisite', () => {
+    const suggestions = buildContainerTripFormSuggestions({
+      trips: [{
+        loadingTerminalName: 'VTE Voltri',
+        deliveryTerminalName: 'ONT Magazzini Generali',
+        returnBaseName: 'Tortona',
+        carrierName: 'Trasporti Rossi',
+        stops: [{ name: 'Rivalta Scrivia' }]
+      }],
+      importRows: [{
+        loadingBaseName: 'PSA Genova Pra',
+        loadingTerminalName: null,
+        deliveryTerminalName: 'VEDI DELIVERY',
+        deliveryName: 'Interporto Bologna',
+        carrierName: 'Trasporti Rossi'
+      }]
+    });
+
+    expect(suggestions.locations).toEqual([
+      'Interporto Bologna',
+      'ONT Magazzini Generali',
+      'PSA Genova Pra',
+      'Rivalta Scrivia',
+      'Tortona',
+      'VTE Voltri'
+    ]);
+    // `VEDI DELIVERY` e un rimando stampato sulla bolla, non un luogo selezionabile.
+    expect(suggestions.locations).not.toContain('VEDI DELIVERY');
+    // Il vettore ripetuto nelle due fonti resta una sola voce.
+    expect(suggestions.carriers).toEqual(['NFRP SRL', 'Trasporti Rossi']);
+  });
+
+  it('resta utilizzabile quando non ci sono ancora dati reali', () => {
+    expect(buildContainerTripFormSuggestions({ trips: [] })).toEqual({
+      locations: [],
+      carriers: ['NFRP SRL']
+    });
   });
 });

@@ -61,7 +61,7 @@ export default async function ContainerTripsPage({ searchParams }: Props) {
             </Link>
             <Link className="secondary-button" href={pendingImports > 0 ? '/trips/import/review' : '/trips/import'}>
               <UploadCloud size={16} aria-hidden />
-              Import PDF
+              Acquisisci file
             </Link>
             <Link className="primary-button" href="/trips/container/new">
               <Plus size={16} aria-hidden />

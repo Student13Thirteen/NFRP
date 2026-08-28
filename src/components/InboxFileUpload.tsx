@@ -1,13 +1,14 @@
 'use client';
 
 import { type ChangeEvent, type DragEvent, useId, useMemo, useRef, useState } from 'react';
-import { CheckCircle2, FileText, UploadCloud, X } from 'lucide-react';
+import { CheckCircle2, FileImage, FileText, UploadCloud, X } from 'lucide-react';
 
 type InboxFileUploadProps = {
   maxSizeMb?: number;
+  context?: 'inbox' | 'road-fines' | 'container-trips';
 };
 
-export function InboxFileUpload({ maxSizeMb = 20 }: InboxFileUploadProps) {
+export function InboxFileUpload({ maxSizeMb = 20, context = 'inbox' }: InboxFileUploadProps) {
   const id = useId();
   const inputRef = useRef<HTMLInputElement>(null);
   const dragDepthRef = useRef(0);
@@ -20,12 +21,22 @@ export function InboxFileUpload({ maxSizeMb = 20 }: InboxFileUploadProps) {
     return file.type === 'application/pdf' || file.name.toLocaleLowerCase('it-IT').endsWith('.pdf');
   }
 
+  function isImage(file: File) {
+    return ['image/jpeg', 'image/png', 'image/webp'].includes(file.type) || /\.(?:jpe?g|png|webp)$/iu.test(file.name);
+  }
+
+  function isAccepted(file: File) {
+    return isPdf(file) || (context === 'container-trips' && isImage(file));
+  }
+
   function validateFiles(input: HTMLInputElement, selectedFiles: File[]) {
     input.setCustomValidity('');
 
-    const nonPdf = selectedFiles.find((file) => !isPdf(file));
-    if (nonPdf) {
-      input.setCustomValidity(`"${nonPdf.name}" non e un PDF.`);
+    const invalidFile = selectedFiles.find((file) => !isAccepted(file));
+    if (invalidFile) {
+      input.setCustomValidity(context === 'container-trips'
+        ? `"${invalidFile.name}" non è un PDF o un'immagine JPG, PNG o WebP.`
+        : `"${invalidFile.name}" non è un PDF.`);
       input.reportValidity();
       return false;
     }
@@ -99,7 +110,9 @@ export function InboxFileUpload({ maxSizeMb = 20 }: InboxFileUploadProps) {
         className="file-upload-input"
         name="files"
         type="file"
-        accept="application/pdf,.pdf"
+        accept={context === 'container-trips'
+          ? 'application/pdf,image/jpeg,image/png,image/webp,.pdf,.jpg,.jpeg,.png,.webp'
+          : 'application/pdf,.pdf'}
         multiple
         required
         onChange={handleChange}
@@ -116,13 +129,27 @@ export function InboxFileUpload({ maxSizeMb = 20 }: InboxFileUploadProps) {
           {files.length ? <CheckCircle2 size={24} aria-hidden /> : <UploadCloud size={24} aria-hidden />}
         </span>
         <span className="inbox-upload-copy">
-          <strong>{isDragging ? 'Rilascia PDF da analizzare' : files.length ? `${files.length} PDF selezionati` : 'Seleziona PDF da analizzare'}</strong>
+          <strong>{isDragging
+            ? context === 'container-trips' ? 'Rilascia bolle da analizzare' : 'Rilascia PDF da analizzare'
+            : files.length
+              ? `${files.length} ${context === 'container-trips' ? 'file selezionati' : 'PDF selezionati'}`
+              : context === 'container-trips' ? 'Seleziona PDF o immagini da analizzare' : 'Seleziona PDF da analizzare'}</strong>
           <small>
             {isDragging
-              ? 'Il drop avvia il caricamento in inbox'
+              ? context === 'road-fines'
+                ? 'Il rilascio avvia l’analisi dei verbali'
+                : context === 'container-trips'
+                  ? 'Il rilascio avvia l’analisi delle bolle container'
+                  : 'Il drop avvia il caricamento in inbox'
               : files.length
-              ? `${Math.max(1, Math.round(totalSize / 1024))} KB totali, pronti per la coda inbox`
-              : `Upload multiplo, PDF fino a ${maxSizeMb} MB ciascuno`}
+              ? context === 'road-fines'
+                ? `${Math.max(1, Math.round(totalSize / 1024))} KB totali, pronti per l’acquisizione dei verbali`
+                : context === 'container-trips'
+                  ? `${Math.max(1, Math.round(totalSize / 1024))} KB totali, pronti per la revisione container`
+                  : `${Math.max(1, Math.round(totalSize / 1024))} KB totali, pronti per la coda inbox`
+              : context === 'container-trips'
+                ? `PDF, JPG, PNG o WebP fino a ${maxSizeMb} MB ciascuno`
+                : `Upload multiplo, PDF fino a ${maxSizeMb} MB ciascuno`}
           </small>
         </span>
         <span className="inbox-upload-action">Scegli file</span>
@@ -140,7 +167,7 @@ export function InboxFileUpload({ maxSizeMb = 20 }: InboxFileUploadProps) {
           <ul>
             {files.slice(0, 8).map((file) => (
               <li key={`${file.name}:${file.size}:${file.lastModified}`}>
-                <FileText size={15} aria-hidden />
+                {isImage(file) ? <FileImage size={15} aria-hidden /> : <FileText size={15} aria-hidden />}
                 <span>{file.name}</span>
                 <small>{Math.max(1, Math.round(file.size / 1024))} KB</small>
               </li>

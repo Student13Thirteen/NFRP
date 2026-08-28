@@ -459,3 +459,48 @@ export async function readPdfTextWithOcr(
     await rm(tempDir, { recursive: true, force: true });
   }
 }
+
+export async function readImageTextWithOcr(
+  fileBuffer: Buffer,
+  extension: '.jpg' | '.png' | '.webp'
+): Promise<OcrTextResult> {
+  if (!getBooleanEnv('INBOX_OCR_ENABLED', true)) {
+    return { text: '', status: 'OCR disattivato da INBOX_OCR_ENABLED.' };
+  }
+
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), 'trip-image-ocr-'));
+  const inputPath = path.join(tempDir, `input${extension}`);
+  const command = getOptionalEnv('TESSERACT_BIN', 'tesseract');
+  const languages = getInboxOcrLanguages();
+
+  try {
+    await writeFile(inputPath, fileBuffer);
+    // Le due passate vanno eseguite in sequenza: Tesseract usa gia tutti i core con OpenMP e
+    // due processi concorrenti su questa macchina passano da pochi secondi a oltre cinque minuti.
+    const blockResult = await execFileAsync(
+      command,
+      [inputPath, 'stdout', '-l', languages, '--psm', '6'],
+      { timeout: getInboxOcrTimeoutMs(), maxBuffer: 4 * 1024 * 1024 }
+    );
+    const sparseResult = await execFileAsync(
+      command,
+      [inputPath, 'stdout', '-l', languages, '--psm', '11'],
+      { timeout: getInboxOcrTimeoutMs(), maxBuffer: 4 * 1024 * 1024 }
+    );
+    const blockText = compactOcrText(String(blockResult.stdout || ''));
+    // La seconda passata e solo un completamento: neutralizza l'intestazione per non far
+    // sembrare al parser che il file contenga una seconda lettera di vettura.
+    const sparseText = compactOcrText(String(sparseResult.stdout || ''))
+      .replace(/LETTERA\s+DI\s+VETTURA/giu, 'Intestazione bolla');
+    const text = compactOcrText([blockText, sparseText].filter(Boolean).join('\nOCR SECONDARIO\n'));
+    if (!text) return { text: '', status: 'OCR immagine eseguito, ma senza testo leggibile.' };
+    return {
+      text,
+      status: `OCR locale Tesseract sull'immagine completato con lettura a blocchi e testo sparso (${text.length} caratteri, lingue ${languages}).`
+    };
+  } catch (error) {
+    return { text: '', status: describeOcrFailure(error) };
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+}

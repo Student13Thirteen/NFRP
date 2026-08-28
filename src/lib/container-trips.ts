@@ -137,7 +137,7 @@ export function getContainerTripApprovedExtrasCents(
 
 export function getContainerTripMarginCents(trip: ContainerTripWithRelations): number | null {
   if (trip.freightRevenueCents === null) return null;
-  const costs = (trip.carrierCostCents || 0) + (trip.tollCostCents || 0);
+  const costs = (trip.carrierCostCents || 0) + (trip.tollCostCents || 0) + (trip.additionalCostCents || 0);
   return trip.freightRevenueCents + getContainerTripApprovedExtrasCents(trip) - costs;
 }
 
@@ -155,9 +155,69 @@ export function getContainerTripCustomerLabel(trip: {
 export function getContainerSummary(trip: Pick<ContainerTripWithRelations, 'containers'>): string {
   const labels = trip.containers.map((container) => {
     const number = container.containerNumber || 'numero da completare';
-    return container.containerType ? `${number} · ${container.containerType}` : number;
+    return [number, container.containerType, container.specification?.replace('_', ' e ')].filter(Boolean).join(' · ');
   });
   return labels.join(' / ') || '-';
+}
+
+export type ContainerTripSuggestionSources = {
+  trips: Array<{
+    loadingTerminalName: string | null;
+    deliveryTerminalName: string | null;
+    returnBaseName: string | null;
+    carrierName: string | null;
+    stops: Array<{ name: string }>;
+  }>;
+  // Le bolle gia acquisite sono l'unica fonte reale di basi, terminal e vettori finche
+  // non esistono abbastanza viaggi salvati: senza di loro le tendine guidate del foglio
+  // operativo partirebbero vuote e l'operatore dovrebbe scrivere tutto a mano.
+  importRows?: Array<{
+    loadingBaseName: string | null;
+    loadingTerminalName: string | null;
+    deliveryTerminalName: string | null;
+    deliveryName: string | null;
+    carrierName: string | null;
+  }>;
+};
+
+export function buildContainerTripFormSuggestions(
+  sources: ContainerTripSuggestionSources
+): { locations: string[]; carriers: string[] } {
+  const locations = new Set<string>();
+  const carriers = new Set<string>(['NFRP SRL']);
+
+  function addLocation(value: string | null) {
+    const cleaned = value?.replace(/\s+/g, ' ').trim();
+    // `VEDI DELIVERY` e un rimando stampato sulla bolla, non un luogo reale.
+    if (!cleaned || cleaned.toLocaleUpperCase('it-IT') === 'VEDI DELIVERY') return;
+    locations.add(cleaned);
+  }
+
+  function addCarrier(value: string | null) {
+    const cleaned = value?.replace(/\s+/g, ' ').trim();
+    if (cleaned) carriers.add(cleaned);
+  }
+
+  for (const trip of sources.trips) {
+    addLocation(trip.loadingTerminalName);
+    addLocation(trip.deliveryTerminalName);
+    addLocation(trip.returnBaseName);
+    for (const stop of trip.stops) addLocation(stop.name);
+    addCarrier(trip.carrierName);
+  }
+
+  for (const row of sources.importRows || []) {
+    addLocation(row.loadingBaseName);
+    addLocation(row.loadingTerminalName);
+    addLocation(row.deliveryTerminalName);
+    addLocation(row.deliveryName);
+    addCarrier(row.carrierName);
+  }
+
+  return {
+    locations: Array.from(locations).sort((left, right) => left.localeCompare(right, 'it')),
+    carriers: Array.from(carriers).sort((left, right) => left.localeCompare(right, 'it'))
+  };
 }
 
 export function getContainerStopsSummary(trip: Pick<ContainerTripWithRelations, 'stops'>): string {

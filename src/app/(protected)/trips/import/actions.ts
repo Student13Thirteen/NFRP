@@ -70,7 +70,7 @@ export async function confirmTripImportBatchAction(batchId: string, formData: Fo
   await setFlashMessage({
     type: 'success',
     title: 'Bolle container confermate',
-    message: `${confirmed} righe del PDF sono diventate trasporti container separati.`
+    message: `${confirmed} righe del file sono diventate trasporti container separati.`
   });
   redirect(REVIEW_PATH);
 }
@@ -82,7 +82,7 @@ export async function discardTripImportBatchAction(batchId: string) {
   await setFlashMessage({
     type: 'success',
     title: 'Bolle container scartate',
-    message: `${discarded} righe del PDF sono state scartate.`
+    message: `${discarded} righe del file sono state scartate.`
   });
   redirect(REVIEW_PATH);
 }

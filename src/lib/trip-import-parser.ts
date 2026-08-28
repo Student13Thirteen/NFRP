@@ -67,7 +67,24 @@ const standardStopLabels = [
 ];
 
 function compactText(value: string): string {
-  return value.replace(/\u0000/g, '').replace(/\r/g, '\n').replace(/[ \t]+/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
+  return value
+    .replace(/\u0000/g, '')
+    .replace(/\r/g, '\n')
+    .replace(/\bMolrice\b/giu, 'Motrice')
+    .replace(/\bAut(?:l|i)eta\b/giu, 'Autista')
+    .replace(/\bSomirmorchio\b/giu, 'Semirimorchio')
+    .replace(/\bComittente\b/giu, 'Committente')
+    .replace(/\bGNI\s*([12])\b/giu, 'CNT $1')
+    // Sulla foto la virgola sostituisce il punto nelle sigle delle etichette e il
+    // troncamento `Ri,` prende il posto di `Rif.`: senza questo le etichette non
+    // vengono riconosciute e il loro testo finisce dentro il nome del terminal.
+    .replace(/\bCod\s*,/giu, 'Cod.')
+    .replace(/\bRi[fl]?\s*,/giu, 'Rif.')
+    .replace(/\bComp\s*,/giu, 'Comp.')
+    .replace(/\bSig[il]{1,2}[on]o\b/giu, 'Sigillo')
+    .replace(/[ \t]+/g, ' ')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
 }
 
 function compactSingleLine(value: string | null | undefined): string | null {
@@ -156,10 +173,6 @@ function findFirstDate(text: string): Date | null {
   return parseItalianDate(firstMatch(text, [/(\d{1,2}[./-]\d{1,2}[./-]\d{4})/]));
 }
 
-function dateKey(date: Date | null): string {
-  return date ? date.toISOString().slice(0, 10) : 'senza-data';
-}
-
 function normalizePlate(value: string | null | undefined): string | null {
   if (!value) return null;
   const compacted = value.toLocaleUpperCase('it-IT').replace(/[^A-Z0-9]/g, '');
@@ -177,12 +190,15 @@ function findPlates(text: string): string[] {
 }
 
 function parseVehiclePlates(text: string): { tractorPlate: string | null; trailerPlate: string | null } {
-  const vehicleStart = findLabelEnd(text, 'Motrice');
-  if (vehicleStart === -1) return { tractorPlate: null, trailerPlate: null };
-  const vehicleEnd = vehicleStart === -1 ? -1 : findNextLabelIndex(text, ['Vettore', 'Committente', 'Attenzione'], vehicleStart);
-  const vehicleText = text.slice(vehicleStart, vehicleEnd === -1 ? vehicleStart + 220 : vehicleEnd);
-  const plates = findPlates(vehicleText);
-  return { tractorPlate: plates[0] || null, trailerPlate: plates[1] || null };
+  const matches = Array.from(text.matchAll(/Motrice/giu));
+  for (const match of matches) {
+    const vehicleStart = (match.index || 0) + match[0].length;
+    const vehicleEnd = findNextLabelIndex(text, ['Vettore', 'Committente', 'Attenzione'], vehicleStart);
+    const vehicleText = text.slice(vehicleStart, vehicleEnd === -1 ? vehicleStart + 220 : vehicleEnd);
+    const plates = findPlates(vehicleText);
+    if (plates.length > 0) return { tractorPlate: plates[0] || null, trailerPlate: plates[1] || null };
+  }
+  return { tractorPlate: null, trailerPlate: null };
 }
 
 function parseDriverName(text: string): string | null {
@@ -229,30 +245,77 @@ function parseLocality(line: string | null | undefined): { city: string | null; 
   return { city: null, province: null };
 }
 
-function parsePickupBlock(value: string, position: number): ParsedTripStop | null {
-  const cleaned = compactSingleLine(value
-    .replace(/Data\s*Ora\s*Firma[\s\S]*$/iu, '')
-    .replace(/_{3,}/g, ' '));
-  if (!cleaned) return null;
+// Etichette prestampate del riquadro presa/consegna. Sulla foto l'OCR le legge storpiate
+// e le mescola ai dati reali (`Arrivo Mezzo` diventa `Auro Mozzo`): vanno riconosciute in
+// modo tollerante e usate come separatori, altrimenti il loro testo entra nel nome o
+// nell'indirizzo della tappa.
+const stopFormLabelSeparator = new RegExp(
+  [
+    'Data\\s*Ora\\s*Firma',
+    '(?:Arrivo|A[a-z]{1,3}o)\\s+M[oe]zzo',
+    'Inizio\\s+Car\\s*/?\\s*S[co]ar',
+    'Termin[aeo]\\s+Car\\s*/?\\s*S[co]ar',
+    'Partenza\\s+M[oe]zzo',
+    'Ordine\\s+n\\.?',
+    'Per\\s+conto',
+    'Destinazione',
+    'Note'
+  ].join('|'),
+  'giu'
+);
 
-  const plannedMatch = /\bh\.?\s*(\d{1,2})\s*[:.,]\s*(\d{2})\b/iu.exec(cleaned);
-  const withoutTime = cleaned.replace(/\bh\.?\s*\d{1,2}\s*[:.,]\s*\d{2}\b[\s\S]*$/iu, '').trim();
-  const addressMarker = /\b(VIALE|VIA|CORSO|PIAZZA|STRADA|LOCALIT[ÀA]|LOC\.?)\b/iu.exec(withoutTime);
-  const name = compactSingleLine(addressMarker ? withoutTime.slice(0, addressMarker.index) : withoutTime);
+const stopAddressMarker = /\b(VIALE|VIA|CORSO|PIAZZA|STRADA|LOCALIT[ÀA]|LOC\.?)\b/iu;
+const stopLocalityMarker = /\b\d{5}\s+.+?\(\s*[A-Z]{2}\s*\)/iu;
+
+// Il bordo del riquadro viene letto come una lettera isolata davanti alla ragione sociale.
+function compactStopName(value: string): string | null {
+  const cleaned = compactSingleLine(value);
+  if (!cleaned) return null;
+  return compactSingleLine(cleaned.replace(/^(?:[^A-Za-zÀ-ÿ0-9]+|\b[A-Za-z]\b)\s*/u, '')) || cleaned;
+}
+
+function parsePickupBlock(value: string, position: number): ParsedTripStop | null {
+  const fragments = compactSingleLine(value.replace(/_{3,}/g, ' '))
+    ?.split(stopFormLabelSeparator)
+    .map((fragment) => compactSingleLine(fragment))
+    .filter((fragment): fragment is string => Boolean(fragment)) || [];
+  if (fragments.length === 0) return null;
+
+  // Ogni parte si ricava dal frammento che la contiene davvero: sui PDF e sempre il primo,
+  // sulla foto nome, indirizzo e localita finiscono in frammenti diversi separati dalle
+  // etichette prestampate. Mescolarli rimetterebbe il rumore dentro i dati.
+  const addressFragment = fragments.find((fragment) => stopAddressMarker.test(fragment)) || null;
+  const localityFragment = fragments.find((fragment) => stopLocalityMarker.test(fragment)) || null;
+
+  const nameFragment = fragments[0] || '';
+  const nameMarker = stopAddressMarker.exec(nameFragment);
+  const name = compactStopName(nameMarker ? nameFragment.slice(0, nameMarker.index) : nameFragment);
   if (!name) return null;
 
-  const addressAndLocality = addressMarker ? withoutTime.slice(addressMarker.index).trim() : null;
-  const withPostalCode = addressAndLocality
-    ? /^(.*?)\b(\d{5})\s+(.+?)\s*\(\s*([A-Z]{2})\s*\)\s*$/iu.exec(addressAndLocality)
+  const addressMarker = addressFragment ? stopAddressMarker.exec(addressFragment) : null;
+  const addressSource = addressFragment && addressMarker
+    ? addressFragment.slice(addressMarker.index)
     : null;
-  const provinceOnly = !withPostalCode && addressAndLocality
-    ? /\(\s*([A-Z]{2})\s*\)/iu.exec(addressAndLocality)
+  const sameFragment = Boolean(addressFragment && addressFragment === localityFragment);
+  const plannedMatch = /\bh\.?\s*(\d{1,2})\s*[:.,]\s*(\d{2})\b/iu.exec(
+    [nameFragment, addressFragment, localityFragment].filter(Boolean).join(' ')
+  );
+
+  const addressAndLocality = addressSource
+    ? addressSource.replace(/\bh\.?\s*\d{1,2}\s*[:.,]\s*\d{2}\b[\s\S]*$/iu, '').trim()
+    : null;
+  const localitySource = sameFragment || !localityFragment ? addressAndLocality : localityFragment;
+  const withPostalCode = localitySource
+    ? /^(.*?)\b(\d{5})\s+([^()]+?)\s*\(\s*([A-Z]{2})\s*\)/iu.exec(localitySource)
+    : null;
+  const provinceOnly = !withPostalCode && localitySource
+    ? /\(\s*([A-Z]{2})\s*\)/iu.exec(localitySource)
     : null;
   const postalCode = withPostalCode?.[2] || null;
   const city = compactSingleLine(withPostalCode?.[3])?.toLocaleUpperCase('it-IT') || null;
   const province = (withPostalCode?.[4] || provinceOnly?.[1])?.toLocaleUpperCase('it-IT') || null;
   const address = compactSingleLine(
-    withPostalCode
+    withPostalCode && sameFragment
       ? withPostalCode[1]
       : addressAndLocality?.replace(/\s*\(\s*[A-Z]{2}\s*\)\s*$/iu, '')
   );
@@ -270,7 +333,7 @@ function parsePickupBlock(value: string, position: number): ParsedTripStop | nul
 
 function parseDatiPresaBlocks(text: string): ParsedTripStop[] {
   const matches = Array.from(text.matchAll(/DATI\s*PRESA\s*(\d+)/giu));
-  return matches.flatMap((match, index) => {
+  const blocks = matches.flatMap((match, index) => {
     const start = (match.index || 0) + match[0].length;
     const nextStart = matches[index + 1]?.index;
     const terminalStop = findNextLabelIndex(text, ['ADRTipo merce', 'CNT 1'], start);
@@ -282,6 +345,25 @@ function parseDatiPresaBlocks(text: string): ParsedTripStop[] {
     const stop = parsePickupBlock(text.slice(start, end), Number(match[1]) - 1);
     return stop ? [stop] : [];
   });
+  if (blocks.length > 0) return blocks;
+  return parseStopBlockWithoutLabel(text);
+}
+
+// Sulle fotografie l'intestazione `DATI PRESA 1` puo risultare illeggibile anche quando
+// il riquadro sottostante e perfettamente leggibile. In quel caso si usa la posizione
+// fissa del modulo: il riquadro sta fra il codice committente e il blocco merce.
+function parseStopBlockWithoutLabel(text: string): ParsedTripStop[] {
+  const customerMatch = /Committente\s*[^0-9]{0,4}[0-9]{3,}/iu.exec(text);
+  if (!customerMatch) return [];
+
+  const start = (customerMatch.index || 0) + customerMatch[0].length;
+  const end = findNextLabelIndex(text, ['ADR', 'Tipo merce', 'CNT 1'], start);
+  const stop = parsePickupBlock(text.slice(start, end === -1 ? text.length : end), 0);
+
+  // Senza un indirizzo o un CAP il riquadro non e stato letto davvero: meglio nessuna
+  // tappa che una tappa inventata dal rumore dell'OCR.
+  if (!stop || (!stop.address && !stop.postalCode)) return [];
+  return [stop];
 }
 
 function parseTerminalName(text: string, label: string): string | null {
@@ -298,6 +380,9 @@ function parseTerminalName(text: string, label: string): string | null {
   ]);
   if (!value) return null;
   return value
+    // Quando l'OCR sporca l'etichetta seguente (`Cod. ritiro` letto `Cod, muro`) il
+    // testo residuo resterebbe attaccato al nome del terminal: si taglia li.
+    .replace(/\s+(?:Cod|Rif|Ril|Ri)\b[\s\S]*$/iu, '')
     .replace(/\(\s*[A-Z]{2}\s*\)/giu, '')
     .replace(/\b(?:GE|AL|TO|CN|FI|LC|RM|NA)\s*$/iu, '')
     .trim() || null;
@@ -332,15 +417,17 @@ function parseContainerSegment(text: string, label: string): { container: string
   if (!value) return { container: null, type: null, seal: null };
 
   const containerPart = value.split(/Sigillo\s*n?\.?/iu)[0] || '';
-  const containerMatch = /(?:^|\s)([A-Z]{4})\s*(\d{6})\s*(\d)(?=\s|20|40|$)/iu.exec(containerPart);
+  const containerMatch = /(?:^|\s)([A-Z]{4})\s*(\d{6})\s*(\d)(?=\s|20|40|45|$)/iu.exec(containerPart);
   const afterContainer = containerMatch ? containerPart.slice((containerMatch.index || 0) + containerMatch[0].length) : containerPart;
-  const typeMatch = /(20|40)\s*(HC|H|BOX|DV|DC|RF|OT|FR)?/iu.exec(afterContainer) || /(20|40)\s*(HC|H|BOX|DV|DC|RF|OT|FR)?/iu.exec(containerPart);
+  const typeMatch = /(20|40|45)\s*(HC|H|BOX|DV|DC|RF|OT|FR)?/iu.exec(afterContainer) || /(20|40|45)\s*(HC|H|BOX|DV|DC|RF|OT|FR)?/iu.exec(containerPart);
   const sealCandidate = firstMatch(value, [/Sigillo\s*n\.?\s*([A-Z0-9/-]{3,30})/iu]);
   const seal = sealCandidate && !/^(?:Nave|Booking|Terminal)/iu.test(sealCandidate) ? sealCandidate : null;
 
   return {
     container: containerMatch ? `${containerMatch[1]}${containerMatch[2]}${containerMatch[3] || ''}`.toLocaleUpperCase('it-IT') : null,
-    type: typeMatch ? `${typeMatch[1]}${typeMatch[2] || ''}`.toLocaleUpperCase('it-IT') : null,
+    // Il foglio operativo scrive `20 BOX`, `40 HC`, `45 HC`: senza lo spazio il valore
+    // letto non coinciderebbe con nessuna voce della tendina e finirebbe in `Altro`.
+    type: typeMatch ? `${typeMatch[1]} ${(typeMatch[2] || '').toLocaleUpperCase('it-IT')}`.trim() : null,
     seal
   };
 }
@@ -371,7 +458,7 @@ function parseStandardWaybill(section: string): ParsedTripWaybill {
       /Vettore\s*([A-Z0-9 &'().-]{2,80}?)(?=\s+VIA\b|\s+VIALE\b|\s+Committente\b)/iu,
       /Vettore\s*\n\s*([^\n]+)/iu
     ]),
-    customerCode: firstMatch(text, [/Committente\s*\n?\s*([0-9]{3,})/iu]),
+    customerCode: firstMatch(text, [/Committente\s*[^0-9]{0,4}([0-9]{3,})/iu]),
     customerName: null,
     loadingBaseName: terminalLoad,
     loadingTerminalName: terminalLoad,
@@ -428,7 +515,7 @@ function parseSslWaybill(section: string): ParsedTripWaybill {
   const documentDate = findFirstDate(text);
   const delivery = parseSslDelivery(text);
   const firstLines = cleanBlockLines(text).slice(0, 12);
-  const containerType = firstMatch(text.slice(0, 500), [/\b((?:20|40)\s*(?:HC|H|BOX|DV|DC|RF)?)\b/iu]);
+  const containerType = firstMatch(text.slice(0, 500), [/\b((?:20|40|45)\s*(?:HC|H|BOX|DV|DC|RF)?)\b/iu]);
   const booking = firstMatch(text.slice(0, 600), [/\b(\d{9,14})\b/u]);
   const terminalHint = firstMatch(text, [/\b(VTE|PSA\s+GENOVA\s+PRA|PESARE\s+A\s+VOLTRI)\b/iu]);
 
@@ -489,8 +576,8 @@ function buildReviewReasons(row: ParsedTripWaybill): string[] {
   const reasons: string[] = [];
   if (!row.documentNumber) reasons.push('Numero documento non riconosciuto.');
   if (!row.tripDate) reasons.push('Data viaggio non riconosciuta.');
-  if (!row.driverName) reasons.push('Autista non riconosciuto nel PDF.');
-  if (!row.tractorPlate) reasons.push('Targa trattore non riconosciuta nel PDF.');
+  if (!row.driverName) reasons.push('Autista non riconosciuto nel documento.');
+  if (!row.tractorPlate) reasons.push('Targa trattore non riconosciuta nel documento.');
   if (!row.loadingBaseName) reasons.push('Base di carico non riconosciuta: controllare prima della conferma.');
   if (!row.deliveryName) reasons.push('Destinazione non riconosciuta: controllare prima della conferma.');
   return reasons;
@@ -510,19 +597,6 @@ function splitSections(text: string): string[] {
       return compacted.slice(start, end).trim();
     })
     .filter(Boolean);
-}
-
-export function buildTripWaybillSourceKey(row: ParsedTripWaybill, rowIndex: number): string {
-  const pieces = [
-    row.documentFormat,
-    row.documentNumber || `row-${rowIndex + 1}`,
-    dateKey(row.tripDate || row.documentDate),
-    row.tractorPlate || 'senza-targa',
-    row.driverName || 'senza-autista',
-    row.loadingBaseName || 'senza-base',
-    row.deliveryName || 'senza-destinazione'
-  ];
-  return `trip-waybill:${pieces.join('|').toLocaleLowerCase('it-IT')}`;
 }
 
 export function parseTripWaybillText(text: string): ParsedTripWaybillDocument {
