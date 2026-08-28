@@ -19,7 +19,7 @@ Open **Panoramica**. It shows only what needs attention, and every line links to
 
 ## 2. One place for every import
 
-Open **Acquisisci**: fleet documents, container waybills, fuel, tolls, leasing and workshop invoices, each with its own card and expected format.
+Open **Acquisisci**: fleet documents, container waybills, fuel, tolls, road fines, leasing and workshop invoices, each with its own card and expected format. Container waybills accept a phone photograph as well as a PDF.
 
 ## 3. Import a toll statement
 
@@ -56,6 +56,14 @@ Open **Impostazioni → Identità aziendale** and change the company name, the l
 ## 10. Show road control records
 
 Open **Verbali**, then **Sinistri stradali**. The synthetic seed contains one invented record in each register. Open their detail pages to show links to vehicle/driver, status and deadlines, monetary fields and protected attachments.
+
+**Verbali → Acquisisci da PDF** reads notice PDFs into drafts marked `Da controllare`. A draft proposes only the fields the document proves, stays out of the cost center and leaves review only after the mandatory fields are complete and a person confirms the check.
+
+## 11. Registries that answer at a glance
+
+Open **Autisti**. The list is there immediately, with a search field that filters while you type and a `Nuovo autista` button in the header. Search a plate to show that the query also matches the vehicle paired with a driver.
+
+Open one driver, then the motor vehicle, then the trailer. Each page opens with `Complesso di oggi`: driver, motor vehicle and trailer for the current day, each linking to the other two. Where a link is missing the page says so instead of guessing, because the driver comes only from the dated assignment and the trailer only from the recorded pairing.
 
 ## What to avoid during a demo
 
